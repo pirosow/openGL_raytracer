@@ -4,6 +4,8 @@ in vec2 uv;
 
 out vec4 color;
 
+const int numBalls = 8;
+
 uniform float fov;
 uniform float xStep;
 uniform float yStep;
@@ -25,8 +27,6 @@ uniform sampler2D prevFrame;
 uniform int frameNumber;
 
 uint seed;
-
-const int numBalls = 4;
 
 struct Ray {
     vec3 origin;
@@ -208,13 +208,23 @@ void main() {
 
     Ball balls[numBalls];
 
-                // pos, radius, color, emission, emission_color, roughness
-    balls[0] = Ball(vec3(0, -510, 20), 500, vec3(0.75, 0.75, 0.75), 0, vec3(1, 1, 1), 0);
-    balls[1] = Ball(vec3(0, 5, 20), 15, vec3(0, 0, 1), 0, vec3(1, 1, 1), 0);
-    balls[2] = Ball(vec3(-40, -1, 20), 10, vec3(1, 0.7, 1), 0, vec3(1, 1, 1), 0);
-    balls[3] = Ball(vec3(-1000, 100, 1000), 600, vec3(0, 0, 0), 4, vec3(1, 1, 1), 0);
+    // pos, radius, color, emission, emission_color, roughness
+    balls[0]  = Ball(vec3(0, -510, 20), 500, vec3(0.75, 0.75, 0.75), 0,  vec3(1, 1, 1), 0);   // floor
+    balls[1]  = Ball(vec3(-40, -1, 20),   10,  vec3(1, 0.7, 1),        0,  vec3(1, 1, 1), 0);   // pink-ish
+    balls[2]  = Ball(vec3(-1000, 100,1000),600,vec3(0, 0, 0),          4,  vec3(1, 1, 1), 0);   // distant light
+
+    // ---------- Added balls ----------
+    balls[3]  = Ball(vec3(30, 5, 35),   8,  vec3(1.0, 0.12, 0.12),  0,  vec3(1,1,1),  0.05); // small shiny red
+    balls[4]  = Ball(vec3(0, 30, 32),   4,  vec3(1.0, 1.0, 1.0),   1,  vec3(1,0.95,0.9), 0);   // warm emissive lamp
+    balls[5]  = Ball(vec3(20, -2, 40),  12, vec3(0.05, 0.7, 0.25), 0,  vec3(1,1,1),  0.02); // glossy green
+    balls[6]  = Ball(vec3(-20, -2, 40), 12, vec3(1.0, 0.55, 0.15), 0,  vec3(1,1,1),  0.4);  // matte orange
+    balls[7]  = Ball(vec3(45, 8, 28),   6,  vec3(1.0, 1.0, 0.05),  0,  vec3(1,1,1),  0.1);  // small glossy yellow
 
     vec3 dir = getDir(uv.x, uv.y);
+
+    RandomValue(seed);
+    RandomValue(seed);
+    RandomValue(seed);
 
     dir += RandomValue(seed) * jitterAmount;
 

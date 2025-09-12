@@ -102,6 +102,8 @@ class App:
         glViewport(0, 0, self.w, self.h)
         glDisable(GL_DEPTH_TEST)
 
+        self.screen = Screen(self.w, self.h)
+
         vert_src = read_shader(os.path.join(SHADER_DIR, "vertex.glsl"))
         frag_src = read_shader(os.path.join(SHADER_DIR, "fragment.glsl"))
 
@@ -113,9 +115,6 @@ class App:
         glUseProgram(self.shader)
 
         self.clock = pg.time.Clock()
-
-        # create screen (quad + accumulation targets)
-        self.screen = Screen(self.w, self.h)
 
         # your camera & uniforms (kept same as your original code)
         self.fov = np.radians(60)
@@ -259,8 +258,8 @@ class App:
         pg.quit()
 
 if __name__ == "__main__":
-    rays_per_pixel = 10
+    rays_per_pixel = 1
     bounces = 20
     jitter_amount = 0.0001
 
-    App((1000, 700), bounces, rays_per_pixel, jitter_amount)
+    App((1440, 900), bounces, rays_per_pixel, jitter_amount)
