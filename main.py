@@ -2,110 +2,42 @@ import pygame as pg
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 import numpy as np
-import ctypes
 import os
 import math
 import random
 import time
-
-SHADER_DIR = "shaders"
+from screen import Screen
+from mesh import Mesh
+import tkinter as tk
 
 def read_shader(path):
     with open(path, "r") as f:
         return f.read()
 
-class Screen:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-
-        # fullscreen quad x,y,z,u,v
-        self.vertices = np.array([
-            -1, -1, 0, 0, 0,
-            -1,  1, 0, 0, 1,
-             1,  1, 0, 1, 1,
-
-            -1, -1, 0, 0, 0,
-             1, -1, 0, 1, 0,
-             1,  1, 0, 1, 1
-        ], dtype=np.float32)
-
-        # VAO / VBO
-        self.vao = glGenVertexArrays(1)
-        glBindVertexArray(self.vao)
-
-        self.vbo = glGenBuffers(1)
-        glBindBuffer(GL_ARRAY_BUFFER, self.vbo)
-        glBufferData(GL_ARRAY_BUFFER, self.vertices.nbytes, self.vertices, GL_STATIC_DRAW)
-
-        # pos (location 0)
-        glEnableVertexAttribArray(0)
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * 4, ctypes.c_void_p(0))
-
-        # uv (location 1)
-        glEnableVertexAttribArray(1)
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * 4, ctypes.c_void_p(12))
-
-        # create two accumulation textures + fbos (ping-pong)
-        self.accum_tex = [glGenTextures(1), glGenTextures(1)]
-        self.accum_fbo = [glGenFramebuffers(1), glGenFramebuffers(1)]
-
-        for i in range(2):
-            glBindTexture(GL_TEXTURE_2D, self.accum_tex[i])
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, None)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-
-            glBindFramebuffer(GL_FRAMEBUFFER, self.accum_fbo[i])
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, self.accum_tex[i], 0)
-
-        # make sure fbos are complete
-        for fbo in self.accum_fbo:
-            glBindFramebuffer(GL_FRAMEBUFFER, fbo)
-            assert glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE
-
-        # clear the accumulation textures to zero (safe initial state)
-        for fbo in self.accum_fbo:
-            glBindFramebuffer(GL_FRAMEBUFFER, fbo)
-            glViewport(0, 0, width, height)
-            glClearColor(0.0, 0.0, 0.0, 0.0)
-            glClear(GL_COLOR_BUFFER_BIT)
-
-        # reset binding
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-        glBindTexture(GL_TEXTURE_2D, 0)
-
-        self.frame_count = 0
-        self.accum_index = 0   # index of texture containing the "previous accumulation"
-
-    def delete(self):
-        glDeleteTextures(self.accum_tex)
-        glDeleteBuffers(1, (self.vbo,))
-        glDeleteVertexArrays(1, (self.vao,))
-        glDeleteFramebuffers(2, self.accum_fbo)
-
 class App:
-    def __init__(self, window_size, bounces, rays_per_pixel, jitter_amount):
+    def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination):
         pg.init()
 
-        pg.display.gl_set_attribute(pg.GL_CONTEXT_MAJOR_VERSION, 3)
+        # request a 4.3 core context (SSBOs require GL 4.3+)
+        pg.display.gl_set_attribute(pg.GL_CONTEXT_MAJOR_VERSION, 4)
         pg.display.gl_set_attribute(pg.GL_CONTEXT_MINOR_VERSION, 3)
         pg.display.gl_set_attribute(pg.GL_CONTEXT_PROFILE_MASK, pg.GL_CONTEXT_PROFILE_CORE)
-        pg.display.gl_set_attribute(pg.GL_DEPTH_SIZE, 24)
 
-        pg.display.set_mode(window_size, pg.OPENGL | pg.DOUBLEBUF)
+        pg.display.set_mode(screen_size, pg.OPENGL | pg.DOUBLEBUF)
         pg.display.set_caption("OpenGL - Progressive (ping-pong)")
 
         self.w, self.h = window_size
-        self.aspect = self.w / self.h
+        self.sw, self.sh = screen_size
+
+        self.aspect = self.sw / self.sh
 
         glViewport(0, 0, self.w, self.h)
         glDisable(GL_DEPTH_TEST)
 
-        self.screen = Screen(self.w, self.h)
+        vert_src = read_shader(os.path.join("shaders", "vertex.glsl"))
+        frag_src = read_shader(os.path.join("shaders", "fragment.glsl"))
 
-        vert_src = read_shader(os.path.join(SHADER_DIR, "vertex.glsl"))
-        frag_src = read_shader(os.path.join(SHADER_DIR, "fragment.glsl"))
+        glBindVertexArray(glGenVertexArrays(1))
 
         self.shader = compileProgram(
             compileShader(vert_src, GL_VERTEX_SHADER),
@@ -113,6 +45,8 @@ class App:
         )
 
         glUseProgram(self.shader)
+
+        self.screen = Screen(self.w, self.h, self.sw, self.sh)
 
         self.clock = pg.time.Clock()
 
@@ -124,8 +58,8 @@ class App:
         self.yStep = self.fov
 
         # camera pos and dir (kept same)
-        self.camPos = np.array([-40, 50, -85.0], dtype=np.float32)
-        self.camDir = [5, -15]
+        self.camPos = np.array([-40, 40, -85], dtype=np.float32)
+        self.camDir = [15, -25]
 
         # your get_camera_basis returns (forward,right,up) — keep assignment as you had it to avoid changing logic
         self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
@@ -145,6 +79,14 @@ class App:
         glUniform1i(glGetUniformLocation(self.shader, "nBounces"), bounces + 1)
         glUniform1i(glGetUniformLocation(self.shader, "rays_per_pixel"), rays_per_pixel)
         glUniform1f(glGetUniformLocation(self.shader, "jitterAmount"), jitter_amount)
+
+        glUniform1i(glGetUniformLocation(self.shader, "lambertian"), lambertian)
+        glUniform1f(glGetUniformLocation(self.shader, "skyBrightness"), skyIllumination)
+
+
+        time.sleep(0.1)
+
+        self.time_start = time.time()
 
         # run main loop
         self.main()
@@ -177,9 +119,21 @@ class App:
         # return in the order your caller expects: (camRight, camForward, camUp)
         return right, forward, up
 
+    def get_time(self):
+        delta = round(time.time() - self.time_start)
+
+        h, rem = divmod(delta, 3600)
+        m, s = divmod(rem, 60)
+
+        if h > 0:
+            return f"{h}h {m}m {s}s"
+        elif m > 0:
+            return f"{m}m {s}s"
+        else:
+            return f"{s}s"
+
     def main(self):
         running = True
-        clock = pg.time.Clock()
 
         while running:
             for event in pg.event.get():
@@ -198,18 +152,16 @@ class App:
                             glClearColor(0.0,0.0,0.0,0.0)
                             glClear(GL_COLOR_BUFFER_BIT)
                         glBindFramebuffer(GL_FRAMEBUFFER, 0)
-                        print("Accumulation reset")
 
             # choose prev and next accumulation indices
             prev_idx = self.screen.accum_index
             next_idx = 1 - prev_idx
 
-            glUseProgram(self.shader)
-
             # bind previous accumulation as prevFrame (texture unit 0)
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, self.screen.accum_tex[prev_idx])
             loc_prev = glGetUniformLocation(self.shader, "prevFrame")
+
             if loc_prev != -1:
                 glUniform1i(loc_prev, 0)
 
@@ -233,7 +185,7 @@ class App:
             # blit the result we just produced to the default framebuffer so the window shows it
             glBindFramebuffer(GL_READ_FRAMEBUFFER, self.screen.accum_fbo[next_idx])
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
-            glBlitFramebuffer(0, 0, self.w, self.h, 0, 0, self.w, self.h, GL_COLOR_BUFFER_BIT, GL_NEAREST)
+            glBlitFramebuffer(0, 0, self.w, self.h, 0, 0, self.sw, self.sh, GL_COLOR_BUFFER_BIT, GL_NEAREST)
 
             # swap and increment
             self.screen.accum_index = next_idx
@@ -241,16 +193,18 @@ class App:
 
             pg.display.flip()
 
-            self.clock.tick(300)
+            self.clock.tick(60)
 
-            pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(self.clock.get_fps())) + " Frame: " + str(self.screen.frame_count))
+            pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(self.clock.get_fps())) + " Frame: " + str(self.screen.frame_count) + " Render time: " + self.get_time())
 
         screen = pg.display.get_surface()
         size = screen.get_size()
         buffer = glReadPixels(0, 0, *size, GL_RGBA, GL_UNSIGNED_BYTE)
         screen_surf = pg.image.fromstring(buffer, size, "RGBA")
         screen_surf = pg.transform.rotate(screen_surf, 180)
-        pg.image.save(screen_surf, "render.png")
+
+        if time.time() - self.time_start > 1 * 60:
+            pg.image.save(screen_surf, f"render_{self.get_time()}.png")
 
         # cleanup
         self.screen.delete()
@@ -259,7 +213,16 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 20
+    bounces = 500
     jitter_amount = 0.0001
+    lambertian = True
+    skyBrightness = 0.75
 
-    App((1440, 900), bounces, rays_per_pixel, jitter_amount)
+    window_size = (1000, 700)
+
+    window = tk.Tk()
+    screen_width = window.winfo_screenwidth()
+    screen_height = window.winfo_screenheight()
+    window.destroy()
+
+    App(window_size, window_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness)

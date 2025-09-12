@@ -1,4 +1,4 @@
-#version 330 core
+#version 430 core
 
 const int numBalls = 4;
 
@@ -6,7 +6,8 @@ in vec2 uv;
 
 out vec4 color;
 
-const int numBalls = 8;
+uniform bool lambertian;
+uniform float skyBrightness;
 
 uniform float fov;
 uniform float xStep;
@@ -28,7 +29,13 @@ uniform float frame;
 uniform sampler2D prevFrame;
 uniform int frameNumber;
 
+uniform int nVertices;
+
+uniform int trisCount;
+
 uint seed;
+
+vec3 skyColor;
 
 struct Ray {
     vec3 origin;
@@ -60,6 +67,31 @@ struct Hit {
     float roughness;
 };
 
+struct Vertex {
+    vec3 pos;
+    vec3 normal;
+};
+
+struct Triangle {
+    uvec3 indices;
+    vec3 color;
+    vec3 emission_color;
+    float emission;
+    float roughness;
+};
+
+layout (std430, binding=0) buffer VertexBuffer {
+    Vertex vertices[];
+};
+
+layout (std430, binding=1) buffer TriBuffer {
+    Triangle tris[];
+};
+
+vec3 normalizeTriangle(vec3 v0, vec3 v1, vec3 v2) {
+    return normalize(cross(v1 - v0, v2 - v0));
+}
+
 Hit raySphereIntersects(Ray ray, Ball ball) {
     float radius = ball.radius;
     vec3 origin = ray.origin;
@@ -81,7 +113,7 @@ Hit raySphereIntersects(Ray ray, Ball ball) {
     float t0 = (-b - sqrt_d) / 2.0;
     float t1 = (-b + sqrt_d) / 2.0;
 
-    float eps = 0.000001;
+    float eps = 0.0000005 * ball.radius;
 
     float t = 0;
 
@@ -126,6 +158,14 @@ float RandomValue(inout uint state)
 vec3 diffuse(vec3 normal) {
     vec3 dir = vec3(RandomValue(seed), RandomValue(seed), RandomValue(seed));
 
+    if (!lambertian) {
+        if (dot(dir, normal) < 0) {
+            dir = -1 * dir;
+        }
+
+        return normalize(dir);
+    }
+
     return normalize(normal + dir);
 }
 
@@ -137,18 +177,26 @@ vec3 lerp(vec3 diffuseDir, vec3 specularDir, float n) {
     return normalize(mix(d0, d1, t));
 }
 
+vec3 getEnvironmentLight(Ray ray) {
+    return skyColor * skyBrightness;
+}
+
 Hit raycast(Ray ray, Ball balls[numBalls]) {
-    float closestDist = 9999;
+    float closestDist = 1e30;
     Hit closest;
+    closest.didHit = false;
 
-    for (int i=0; i < numBalls; i++) {
-        Hit hit = raySphereIntersects(ray, balls[i]);
+    // check spheres
+    for (int i = 0; i < numBalls; ++i) {
+        Hit h = raySphereIntersects(ray, balls[i]);
 
-        float distance = getDist(ray.origin, hit.hit_point);
+        if (h.didHit) {
+            float d = getDist(ray.origin, h.hit_point);
 
-        if (distance < closestDist) {
-            closestDist = distance;
-            closest = hit;
+            if (d < closestDist) {
+                closestDist = d;
+                closest = h;
+            }
         }
     }
 
@@ -164,16 +212,25 @@ vec3 raytrace(Ray ray, Ball balls[numBalls], int bounces) {
 
         if (hit.didHit) {
             vec3 diffuseDir = diffuse(hit.normal);
-            vec3 dir = lerp(diffuseDir, hit.normal, hit.roughness);
+            vec3 specularDir = reflect(ray.dir, hit.normal);
+
+            vec3 dir = lerp(diffuseDir, specularDir, hit.roughness);
 
             ray.dir = dir;
-            ray.origin = hit.hit_point + dir * 0.00001;
+            ray.origin = hit.hit_point + hit.normal * 0.1;
 
-            vec3 emittedLight = hit.emission_color * hit.emission * 2;
+            vec3 emittedLight = hit.emission_color * hit.emission;
+
+            if (lambertian) {
+                emittedLight *= 2;
+            }
+
             incomingLight += emittedLight * rayColor;
             rayColor *= hit.color;
 
         } else {
+            incomingLight += getEnvironmentLight(ray) * rayColor;
+
             break;
         }
     }
@@ -206,21 +263,17 @@ vec3 getDir(float x, float y) {
 }
 
 void main() {
+    skyColor = vec3(0.1, 0.6, 0.92);
+
     seed = uint(gl_FragCoord.x) * 1973u ^ uint(gl_FragCoord.y) * 9277u ^ uint(frameNumber) * 1664525u;
 
     Ball balls[numBalls];
 
     // pos, radius, color, emission, emission_color, roughness
-    balls[0]  = Ball(vec3(0, -510, 20), 500, vec3(0.75, 0.75, 0.75), 0,  vec3(1, 1, 1), 0);   // floor
-    balls[1]  = Ball(vec3(-40, -1, 20),   10,  vec3(1, 0.7, 1),        0,  vec3(1, 1, 1), 0);   // pink-ish
-    balls[2]  = Ball(vec3(-1000, 100,1000),600,vec3(0, 0, 0),          4,  vec3(1, 1, 1), 0);   // distant light
-
-    // ---------- Added balls ----------
-    balls[3]  = Ball(vec3(30, 5, 35),   8,  vec3(1.0, 0.12, 0.12),  0,  vec3(1,1,1),  0.05); // small shiny red
-    balls[4]  = Ball(vec3(0, 30, 32),   4,  vec3(1.0, 1.0, 1.0),   1,  vec3(1,0.95,0.9), 0);   // warm emissive lamp
-    balls[5]  = Ball(vec3(20, -2, 40),  12, vec3(0.05, 0.7, 0.25), 0,  vec3(1,1,1),  0.02); // glossy green
-    balls[6]  = Ball(vec3(-20, -2, 40), 12, vec3(1.0, 0.55, 0.15), 0,  vec3(1,1,1),  0.4);  // matte orange
-    balls[7]  = Ball(vec3(45, 8, 28),   6,  vec3(1.0, 1.0, 0.05),  0,  vec3(1,1,1),  0.1);  // small glossy yellow
+    balls[0] = Ball(vec3(0, -1010, 20), 1000, vec3(1, 0.75, 1), 0, vec3(0, 0, 0), 0);   // floor
+    balls[1]  = Ball(vec3(-20, 1.5, -10), 13, vec3(1, 0.3, 0.5), 0, vec3(0, 0, 0), 0);   // pink-ish
+    balls[2]  = Ball(vec3(10, 5, 20), 15, vec3(1, 1, 1), 0, vec3(0, 0, 0), 1);   // blue
+    balls[3]  = Ball(vec3(-1000, 100, 1000), 600, vec3(0, 0, 0), 3, vec3(1, 1, 1), 0);   // distant light
 
     vec3 dir = getDir(uv.x, uv.y);
 
