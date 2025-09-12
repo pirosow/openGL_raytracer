@@ -1,5 +1,7 @@
 #version 330 core
 
+const int numBalls = 4;
+
 in vec2 uv;
 
 out vec4 color;
@@ -25,8 +27,6 @@ uniform sampler2D prevFrame;
 uniform int frameNumber;
 
 uint seed;
-
-const int numBalls = 4;
 
 struct Ray {
     vec3 origin;
