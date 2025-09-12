@@ -217,7 +217,7 @@ vec3 raytrace(Ray ray, Ball balls[numBalls], int bounces) {
             vec3 dir = lerp(diffuseDir, specularDir, hit.roughness);
 
             ray.dir = dir;
-            ray.origin = hit.hit_point + hit.normal * 0.1;
+            ray.origin = hit.hit_point + hit.normal * 0.05;
 
             vec3 emittedLight = hit.emission_color * hit.emission;
 
@@ -269,11 +269,13 @@ void main() {
 
     Ball balls[numBalls];
 
-    // pos, radius, color, emission, emission_color, roughness
-    balls[0] = Ball(vec3(0, -1010, 20), 1000, vec3(1, 0.75, 1), 0, vec3(0, 0, 0), 0);   // floor
-    balls[1]  = Ball(vec3(-20, 1.5, -10), 13, vec3(1, 0.3, 0.5), 0, vec3(0, 0, 0), 0);   // pink-ish
-    balls[2]  = Ball(vec3(10, 5, 20), 15, vec3(1, 1, 1), 0, vec3(0, 0, 0), 1);   // blue
-    balls[3]  = Ball(vec3(-1000, 100, 1000), 600, vec3(0, 0, 0), 3, vec3(1, 1, 1), 0);   // distant light
+    // pos, radius, color, emission, emission_color, smoothness
+    balls[0] = Ball(vec3(0, -1010, 20), 1000, vec3(1, 0.2, 0.7), 0, vec3(0, 0, 0), 0);   // floor
+    //balls[1]  = Ball(vec3(-20, 1.5, -10), 13, vec3(0.15, 0.95, 0.15), 0, vec3(0, 0, 0), 0);
+    balls[1]  = Ball(vec3(-10, 1.5, 0.6), 13, vec3(1, 1, 1), 0, vec3(0, 0, 0), 1);
+    //balls[1]  = Ball(vec3(-19.75, 5, 25), 15, vec3(1, 1, 1), 0, vec3(0, 0, 0), 1);// pink-ish
+    balls[2]  = Ball(vec3(10, 5, 20), 15, vec3(1, 1, 1), 0, vec3(0, 0, 0), 1);   // mirror
+    balls[3]  = Ball(vec3(-1000, 100, 1000), 600, vec3(0, 0, 0), 2, vec3(1, 1, 1), 0);   // distant light
 
     vec3 dir = getDir(uv.x, uv.y);
 

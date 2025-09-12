@@ -26,6 +26,13 @@ class App:
         pg.display.set_mode(screen_size, pg.OPENGL | pg.DOUBLEBUF)
         pg.display.set_caption("OpenGL - Progressive (ping-pong)")
 
+        pg.mouse.set_visible(False)
+        pg.event.set_grab(True)
+
+        self.speed = 1
+
+        self.sensitivity = 0.1
+
         self.w, self.h = window_size
         self.sw, self.sh = screen_size
 
@@ -59,9 +66,8 @@ class App:
 
         # camera pos and dir (kept same)
         self.camPos = np.array([-40, 40, -85], dtype=np.float32)
-        self.camDir = [15, -25]
+        self.camDir = np.array([15, -25], dtype=np.float32)
 
-        # your get_camera_basis returns (forward,right,up) — keep assignment as you had it to avoid changing logic
         self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
 
         # upload static uniforms (same names as in your shader)
@@ -83,7 +89,6 @@ class App:
         glUniform1i(glGetUniformLocation(self.shader, "lambertian"), lambertian)
         glUniform1f(glGetUniformLocation(self.shader, "skyBrightness"), skyIllumination)
 
-
         time.sleep(0.1)
 
         self.time_start = time.time()
@@ -97,9 +102,9 @@ class App:
         yaw = math.radians(yaw_deg)
         pitch = math.radians(pitch_deg)
 
-        cy = math.cos(yaw);
+        cy = math.cos(yaw)
         sy = math.sin(yaw)
-        cp = math.cos(pitch);
+        cp = math.cos(pitch)
         sp = math.sin(pitch)
 
         # conventional forward: x = sin(yaw)*cos(pitch), y = sin(pitch), z = cos(yaw)*cos(pitch)
@@ -132,26 +137,71 @@ class App:
         else:
             return f"{s}s"
 
+    def resetFrames(self):
+        # reset accumulation
+        self.screen.frame_count = 0
+        self.screen.accum_index = 0
+        for fbo in self.screen.accum_fbo:
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo)
+            glViewport(0, 0, self.w, self.h)
+            glClearColor(0.0, 0.0, 0.0, 0.0)
+            glClear(GL_COLOR_BUFFER_BIT)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+
     def main(self):
         running = True
 
         while running:
+            keys = pg.key.get_pressed()
+            delta = pg.mouse.get_rel()
+
+            delta = np.array([delta[0], delta[1] * -1], dtype=np.float32)
+
+            self.camDir += delta * self.sensitivity
+
+            self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
+
+            if keys[pg.K_w]:
+                self.camPos += self.speed * self.camForward
+
+                self.resetFrames()
+
+            if keys[pg.K_s]:
+                self.camPos -= self.speed * self.camForward
+
+                self.resetFrames()
+
+            if keys[pg.K_d]:
+                self.camPos += self.speed * self.camRight
+
+                self.resetFrames()
+
+            if keys[pg.K_a]:
+                self.camPos -= self.speed * self.camRight
+
+                self.resetFrames()
+
+            if keys[pg.K_e]:
+                self.camPos += self.speed * self.camUp
+
+                self.resetFrames()
+
+            if keys[pg.K_q]:
+                self.camPos -= self.speed * self.camUp
+
+                self.resetFrames()
+
+            if delta.any() > 0:
+                self.resetFrames()
+
             for event in pg.event.get():
+                keys = pg.key.get_pressed()
+
                 if event.type == pg.QUIT:
                     running = False
                 if event.type == pg.KEYDOWN:
                     if event.key == pg.K_ESCAPE:
                         running = False
-                    if event.key == pg.K_r:
-                        # reset accumulation
-                        self.screen.frame_count = 0
-                        self.screen.accum_index = 0
-                        for fbo in self.screen.accum_fbo:
-                            glBindFramebuffer(GL_FRAMEBUFFER, fbo)
-                            glViewport(0, 0, self.w, self.h)
-                            glClearColor(0.0,0.0,0.0,0.0)
-                            glClear(GL_COLOR_BUFFER_BIT)
-                        glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
             # choose prev and next accumulation indices
             prev_idx = self.screen.accum_index
@@ -175,6 +225,11 @@ class App:
             if loc_f != -1:
                 glUniform1f(loc_f, random.uniform(0.0, 1.0))
 
+            glUniform3fv(glGetUniformLocation(self.shader, "camPos"), 1, self.camPos)
+            glUniform3fv(glGetUniformLocation(self.shader, "camRight"), 1, self.camRight)
+            glUniform3fv(glGetUniformLocation(self.shader, "camUp"), 1, self.camUp)
+            glUniform3fv(glGetUniformLocation(self.shader, "camForward"), 1, self.camForward)
+
             # render into the NEXT accumulation FBO (do not render into the texture we're reading from)
             glBindFramebuffer(GL_FRAMEBUFFER, self.screen.accum_fbo[next_idx])
             glViewport(0, 0, self.w, self.h)
@@ -193,7 +248,7 @@ class App:
 
             pg.display.flip()
 
-            self.clock.tick(60)
+            self.clock.tick()
 
             pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(self.clock.get_fps())) + " Frame: " + str(self.screen.frame_count) + " Render time: " + self.get_time())
 
@@ -212,17 +267,17 @@ class App:
         pg.quit()
 
 if __name__ == "__main__":
-    rays_per_pixel = 1
-    bounces = 500
-    jitter_amount = 0.0001
+    rays_per_pixel = 2
+    bounces = 100
+    jitter_amount = 0.00005
     lambertian = True
     skyBrightness = 0.75
-
     window_size = (1000, 700)
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()
     screen_height = window.winfo_screenheight()
+    screen_size = (int(screen_width / 1.25), int(screen_height // 1.25))
     window.destroy()
 
-    App(window_size, window_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness)
+    App(window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness)
