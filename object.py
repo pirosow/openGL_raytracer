@@ -3,7 +3,7 @@ import numpy as np
 from OpenGL.GL import *
 
 class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
-    def __init__(self, pos, eulers, dirPath, color, emission_color, emission, roughness, scale):
+    def __init__(self, pos, eulers, dirPath, color, emission_color=[0, 0, 0], emission=0, roughness=0, scale=1):
         dirPath = os.path.join("models/", dirPath)
 
         print(f"Loading {dirPath}...")
@@ -11,23 +11,6 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
         self.position = np.array(pos, dtype=np.float32)
         self.eulers = np.array(eulers, dtype=np.float32)
         self.scale = np.array([scale, scale, scale], dtype=np.float32)
-
-        self.vertexStruct = np.dtype([
-            ("pos", np.float32, 3), ("_pad0", np.float32),
-            ("normal", np.float32, 3), ("_pad1", np.float32),
-        ], align=False)  # itemsize == 32
-
-        self.triangleStruct = np.dtype([
-            ("indices", np.uint32, 3), #uvec3
-            ("pad0", np.uint32),
-            ("color", np.float32, 3), #vec3
-            ("pad1", np.float32),
-            ("emission_color", np.float32, 3), #vec3
-            ("pad2", np.float32),
-            ("emission", np.float32), #float
-            ("roughness", np.float32), #float
-            ("pad4", np.float32, 2)
-        ], align=False)
 
         files = os.listdir(dirPath)
 
@@ -40,35 +23,20 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
         if objFilePath is not None:
             self.total_vertices, self.faces = self.loadObj(objFilePath)
 
+        # after these lines (your existing code)
         self.total_vertices = self.total_vertices.reshape(-1, 8).astype(np.float32)
 
         self.pos = self.total_vertices[:, 0:3].astype(np.float32)
         self.normals = self.total_vertices[:, 3:6].astype(np.float32)
         self.uvs = self.total_vertices[:, 6:8].astype(np.float32)
 
+        # apply transform (you already do this)
         self.pos, self.normals = self.getWorld()
 
-        self.verts = np.zeros(len(self.total_vertices), dtype=self.vertexStruct)
-        self.tris = np.zeros(len(self.total_vertices), dtype=self.triangleStruct)
-
-        self.verts["pos"][:, :3] = self.pos
-        self.verts["normal"][:, :3] = self.normals
-
-        self.tris["indices"][:, :3] = self.faces
-        self.tris["color"][:, :3] = np.array(color, dtype=np.float32)
-        self.tris["emission_color"][:, :3] = np.array(emission_color, dtype=np.float32)
-        self.tris["emission"] = emission
-        self.tris["roughness"] = roughness
-
-        self.verts_object = glGenBuffers(1)
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.verts_object)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.verts.nbytes, self.verts, GL_STATIC_DRAW)
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, self.verts_object)
-
-        self.tris_object = glGenBuffers(1)
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.tris_object)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.tris.nbytes, self.tris, GL_STATIC_DRAW)
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, self.tris_object)
+        self.color = color
+        self.emission_color = emission_color
+        self.emission = emission
+        self.roughness = roughness
 
     def getWorld(self):
         # transform vertices to world space as you already do
@@ -265,6 +233,138 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
             float(normals[2])
         ]
 
-    def clearMemory(self):
-        glDeleteBuffers(1, (self.vbo,))
-        glDeleteBuffers(1, (self.ssbo,))
+class Rect:
+    def __init__(self, size, pos, eulers, color, emission_color=[0, 0, 0], emission=0, roughness=0, scale=1):
+        self.position = np.array(pos, dtype=np.float32)
+        self.eulers = np.array(eulers, dtype=np.float32)
+        self.scale = np.array([scale, scale, scale], dtype=np.float32)
+
+        self.total_vertices = self.make_cube_vertices(size)
+
+        self.total_vertices = self.total_vertices.reshape(-1, 8).astype(np.float32)
+
+        self.pos = self.total_vertices[:, 0:3].astype(np.float32)
+        self.normals = self.total_vertices[:, 3:6].astype(np.float32)
+        self.uvs = self.total_vertices[:, 6:8].astype(np.float32)
+
+        # apply transform (you already do this)
+        self.pos, self.normals = self.getWorld()
+
+        self.color = color
+        self.emission_color = np.array(emission_color)
+        self.emission = emission
+        self.roughness = roughness
+
+    def make_cube_vertices(self, size):
+        """
+        size: iterable of length 3: (sx, sy, sz)
+        returns: numpy array shape (36,8) dtype float32 where each vertex is:
+          [px,py,pz, nx,ny,nz, u,v]
+        """
+        sx, sy, sz = float(size[0]), float(size[1]), float(size[2])
+        hx, hy, hz = sx / 2.0, sy / 2.0, sz / 2.0
+
+        # For each face we define 4 corner positions (quad), a single face normal, and 4 UVs
+        # We will emit two triangles per quad: (0,1,2) and (0,2,3)
+        faces = [
+            # +Z front
+            ((-hx, -hy, hz), (hx, -hy, hz), (hx, hy, hz), (-hx, hy, hz), (0.0, 0.0, 1.0)),
+            # -Z back
+            ((hx, -hy, -hz), (-hx, -hy, -hz), (-hx, hy, -hz), (hx, hy, -hz), (0.0, 0.0, -1.0)),
+            # +Y top
+            ((-hx, hy, hz), (hx, hy, hz), (hx, hy, -hz), (-hx, hy, -hz), (0.0, 1.0, 0.0)),
+            # -Y bottom
+            ((-hx, -hy, -hz), (hx, -hy, -hz), (hx, -hy, hz), (-hx, -hy, hz), (0.0, -1.0, 0.0)),
+            # +X right
+            ((hx, -hy, hz), (hx, -hy, -hz), (hx, hy, -hz), (hx, hy, hz), (1.0, 0.0, 0.0)),
+            # -X left
+            ((-hx, -hy, -hz), (-hx, -hy, hz), (-hx, hy, hz), (-hx, hy, -hz), (-1.0, 0.0, 0.0)),
+        ]
+
+        # simple UVs for each corner of the face
+        uv0 = (0.0, 0.0)
+        uv1 = (1.0, 0.0)
+        uv2 = (1.0, 1.0)
+        uv3 = (0.0, 1.0)
+
+        verts = []
+        for p0, p1, p2, p3, normal in faces:
+            nx, ny, nz = normal
+            # triangle 1: p0, p1, p2
+            verts.append((*p0, nx, ny, nz, uv0[0], uv0[1]))
+            verts.append((*p1, nx, ny, nz, uv1[0], uv1[1]))
+            verts.append((*p2, nx, ny, nz, uv2[0], uv2[1]))
+            # triangle 2: p0, p2, p3
+            verts.append((*p0, nx, ny, nz, uv0[0], uv0[1]))
+            verts.append((*p2, nx, ny, nz, uv2[0], uv2[1]))
+            verts.append((*p3, nx, ny, nz, uv3[0], uv3[1]))
+
+        arr = np.array(verts, dtype=np.float32)  # shape (36, 8)
+        return arr
+
+    def getWorld(self):
+        # transform vertices to world space as you already do
+        model_mat4, normal_mat3 = self.make_model_and_normal_matrices(self.position, self.eulers, self.scale, "XYZ")
+        RS3 = model_mat4[:3, :3]
+        translation = model_mat4[:3, 3]
+        world_pos = (RS3 @ self.pos.T).T + translation
+        world_normals = (normal_mat3 @ self.normals.T).T
+        norms = np.linalg.norm(world_normals, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        world_normals = world_normals / norms
+
+        return world_pos, world_normals
+
+    def rotation_matrix_from_euler(self, rx, ry, rz, order="XYZ"):
+        """rx,ry,rz in radians. order string like 'XYZ' (apply X then Y then Z)."""
+        cx, sx = np.cos(rx), np.sin(rx)
+        cy, sy = np.cos(ry), np.sin(ry)
+        cz, sz = np.cos(rz), np.sin(rz)
+
+        Rx = np.array([[1, 0, 0],
+                       [0, cx, -sx],
+                       [0, sx, cx]], dtype=np.float32)
+
+        Ry = np.array([[cy, 0, sy],
+                       [0, 1, 0],
+                       [-sy, 0, cy]], dtype=np.float32)
+
+        Rz = np.array([[cz, -sz, 0],
+                       [sz, cz, 0],
+                       [0, 0, 1]], dtype=np.float32)
+
+        mats = {"X": Rx, "Y": Ry, "Z": Rz}
+        R = np.eye(3, dtype=np.float32)
+        # rightmost in multiplication is applied first; we reverse to compose correctly
+        for axis in reversed(order):
+            R = mats[axis] @ R
+        return R
+
+    def make_model_and_normal_matrices(self, position, euler_deg, scale=(1.0, 1.0, 1.0), order="XYZ"):
+        """
+        position: (tx,ty,tz)
+        euler_deg: (rx,ry,rz) in degrees
+        scale: (sx,sy,sz)
+        returns: model_mat (4x4 np.float32), normal_mat (3x3 np.float32)
+        """
+        tx, ty, tz = position
+        rx, ry, rz = np.deg2rad(euler_deg)  # convert degrees -> radians
+        sx, sy, sz = scale
+
+        R3 = self.rotation_matrix_from_euler(rx, ry, rz, order)
+        S3 = np.diag([sx, sy, sz]).astype(np.float32)
+
+        RS3 = R3 @ S3  # scale then rotate (v' = R * (S * v))
+        M = np.eye(4, dtype=np.float32)
+        M[:3, :3] = RS3
+        M[:3, 3] = np.array([tx, ty, tz], dtype=np.float32)
+
+        # normal matrix = transpose(inverse(upper-left 3x3))
+        # guard against singular matrix
+        try:
+            normal_mat = np.linalg.inv(M[:3, :3]).T.astype(np.float32)
+        except np.linalg.LinAlgError:
+            # fallback to just rotation (if inverse fails)
+            normal_mat = R3.astype(np.float32)
+
+        return M, normal_mat

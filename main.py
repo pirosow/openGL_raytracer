@@ -7,8 +7,9 @@ import math
 import random
 import time
 from screen import Screen
-from mesh import Mesh
+from object import *
 import tkinter as tk
+from scene import Scene
 
 def read_shader(path):
     with open(path, "r") as f:
@@ -24,14 +25,13 @@ class App:
         pg.display.gl_set_attribute(pg.GL_CONTEXT_PROFILE_MASK, pg.GL_CONTEXT_PROFILE_CORE)
 
         pg.display.set_mode(screen_size, pg.OPENGL | pg.DOUBLEBUF)
-        pg.display.set_caption("OpenGL - Progressive (ping-pong)")
-
-        pg.mouse.set_visible(False)
-        pg.event.set_grab(True)
+        pg.display.set_caption("OpenGL raytracer")
 
         self.speed = 1
 
         self.sensitivity = 0.1
+
+        self.canMove = False
 
         self.w, self.h = window_size
         self.sw, self.sh = screen_size
@@ -55,6 +55,74 @@ class App:
 
         self.screen = Screen(self.w, self.h, self.sw, self.sh)
 
+        self.knight = Mesh(
+            [0, -24, 0],
+            [270, 0, -90],
+            "knight",
+            [0.75, 0.75, 0.75],
+            scale=7
+        )
+
+        self.redWall = Rect(
+            [5, 5, 0.1],
+            [0, 0, -25],
+            [0, 0, 0],
+            [1, 0, 0],
+            scale=10
+        )
+
+        self.blueWall = Rect(
+            [5, 5, 0.1],
+            [0, 0, 25],
+            [0, 0, 0],
+            [0, 0, 1],
+            scale=10
+        )
+
+        self.greenWall = Rect(
+            [5, 5, 0.1],
+            [25, 0, 0],
+            [0, 90, 0],
+            [0, 1, 0],
+            scale=10
+        )
+
+        self.ground = Rect(
+            [5, 5, 0.1],
+            [0, -25, 0],
+            [90, 0, 0],
+            [1, 1, 1],
+            scale=10
+        )
+
+        self.floor = Rect(
+            [5, 5, 0.1],
+            [0, 25, 0],
+            [90, 0, 0],
+            [1, 1, 1],
+            scale=10
+        )
+
+        self.light = Rect(
+            [5, 5, 0.25],
+            [0, 23.9, 0],
+            [-90, 0, 0],
+            [0, 0, 0],
+            [1, 1, 1],
+            2,
+            scale=4
+        )
+
+        self.scene = Scene([
+            self.knight,
+            self.redWall,
+            self.blueWall,
+            self.greenWall,
+            self.ground,
+            self.floor,
+            self.light
+        ])
+
         self.clock = pg.time.Clock()
 
         # your camera & uniforms (kept same as your original code)
@@ -64,9 +132,11 @@ class App:
         self.xStep = self.fov * self.aspect
         self.yStep = self.fov
 
+        self.lambertian = lambertian
+
         # camera pos and dir (kept same)
-        self.camPos = np.array([-40, 40, -85], dtype=np.float32)
-        self.camDir = np.array([15, -25], dtype=np.float32)
+        self.camPos = np.array([-73, 0, -1], dtype=np.float32)
+        self.camDir = np.array([90, 0], dtype=np.float32)
 
         self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
 
@@ -86,9 +156,10 @@ class App:
         glUniform1i(glGetUniformLocation(self.shader, "rays_per_pixel"), rays_per_pixel)
         glUniform1f(glGetUniformLocation(self.shader, "jitterAmount"), jitter_amount)
 
-        glUniform1i(glGetUniformLocation(self.shader, "lambertian"), lambertian)
+        glUniform1i(glGetUniformLocation(self.shader, "lambertian"), self.lambertian)
         glUniform1f(glGetUniformLocation(self.shader, "skyBrightness"), skyIllumination)
         glUniform1i(glGetUniformLocation(self.shader, "total_frames"), 0)
+        glUniform1i(glGetUniformLocation(self.shader, "trisCount"), len(self.knight.total_vertices))
 
         time.sleep(0.1)
 
@@ -156,45 +227,47 @@ class App:
 
         self.total_frames = 0
 
+        last_frame_time = time.time()
+
         while running:
             self.total_frames += 1
 
             keys = pg.key.get_pressed()
             delta = pg.mouse.get_rel()
 
-            delta = np.array([delta[0], delta[1] * -1], dtype=np.float32)
+            delta = np.array([delta[0], delta[1] * -1], dtype=np.float32) * self.canMove
 
             self.camDir += delta * self.sensitivity
 
             self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
 
             if keys[pg.K_w]:
-                self.camPos += self.speed * self.camForward
+                self.camPos += self.speed * self.camForward * self.canMove
 
                 self.resetFrames()
 
             if keys[pg.K_s]:
-                self.camPos -= self.speed * self.camForward
+                self.camPos -= self.speed * self.camForward * self.canMove
 
                 self.resetFrames()
 
             if keys[pg.K_d]:
-                self.camPos += self.speed * self.camRight
+                self.camPos += self.speed * self.camRight * self.canMove
 
                 self.resetFrames()
 
             if keys[pg.K_a]:
-                self.camPos -= self.speed * self.camRight
+                self.camPos -= self.speed * self.camRight * self.canMove
 
                 self.resetFrames()
 
             if keys[pg.K_e]:
-                self.camPos += self.speed * self.camUp
+                self.camPos += self.speed * self.camUp * self.canMove
 
                 self.resetFrames()
 
             if keys[pg.K_q]:
-                self.camPos -= self.speed * self.camUp
+                self.camPos -= self.speed * self.camUp * self.canMove
 
                 self.resetFrames()
 
@@ -207,6 +280,33 @@ class App:
                 if event.type == pg.QUIT:
                     running = False
                 if event.type == pg.KEYDOWN:
+                    if keys[pg.K_m]:
+                        self.canMove = not self.canMove
+
+                        print("\n Can move" if self.canMove else "\nCan't move")
+
+                        pg.mouse.set_visible(not self.canMove)
+                        pg.event.set_grab(self.canMove)
+
+                    if keys[pg.K_l]:
+                        self.lambertian = not self.lambertian
+
+                        print(f"\nSet lambertian lighting to {self.lambertian}")
+
+                        glUniform1i(glGetUniformLocation(self.shader, "lambertian"), self.lambertian)
+
+                        self.resetFrames()
+
+                    if keys[pg.K_c]:
+                        print("\nCamera info:")
+                        print(f"Camera position: {self.camPos}")
+                        print(f"Camera rotation: {self.camDir}")
+
+                    if keys[pg.K_r]:
+                        self.camDir = np.round(self.camDir / 5) * 5
+
+                        self.resetFrames()
+
                     if event.key == pg.K_ESCAPE:
                         running = False
 
@@ -256,9 +356,13 @@ class App:
 
             pg.display.flip()
 
-            self.clock.tick()
+            deltaTime = time.time() - last_frame_time
 
-            pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(self.clock.get_fps())) + " Frame: " + str(self.screen.frame_count) + " Render time: " + self.get_time())
+            fps = 1 / deltaTime
+
+            last_frame_time = time.time()
+
+            pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(fps)) + " Frame: " + str(self.screen.frame_count) + " Frame render time: " + str(round(deltaTime * 1000)) + "ms" + "Total render time: " + self.get_time())
 
         screen = pg.display.get_surface()
         size = screen.get_size()
@@ -271,21 +375,22 @@ class App:
 
         # cleanup
         self.screen.delete()
+        self.scene.clearMemory()
         glDeleteProgram(self.shader)
         pg.quit()
 
 if __name__ == "__main__":
     rays_per_pixel = 1
     bounces = 100
-    jitter_amount = 0.00005
+    jitter_amount = 0.0005
     lambertian = True
-    skyBrightness = 1
-    window_size = (1000, 700)
+    skyBrightness = 0
+    window_size = np.array([1000, 700])
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()
     screen_height = window.winfo_screenheight()
-    screen_size = (int(screen_width / 1.25), int(screen_height // 1.25))
+    screen_size = (int(screen_width // 1.15), int(screen_height // 1.15))
     window.destroy()
 
     App(window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness)
