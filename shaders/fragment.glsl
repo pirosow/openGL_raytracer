@@ -1,8 +1,5 @@
 #version 430 core
 
-const int numBalls = 1;
-int trisCount;
-
 in vec2 uv;
 
 out vec4 color;
@@ -33,6 +30,8 @@ uniform sampler2D prevFrame;
 uniform int frameNumber;
 
 uniform int nVertices;
+
+int trisCount;
 
 uint seed;
 
@@ -238,24 +237,10 @@ vec3 getEnvironmentLight(Ray ray) {
     return skyColor * skyBrightness;
 }
 
-Hit raycast(Ray ray, Ball balls[numBalls]) {
+Hit raycast(Ray ray) {
     float closestDist = 1e30;
     Hit closest;
     closest.didHit = false;
-
-    // check spheres
-    for (int i = 0; i < numBalls; ++i) {
-        Hit h = raySphereIntersects(ray, balls[i]);
-
-        if (h.didHit) {
-            float d = getDist(ray.origin, h.hit_point);
-
-            if (d < closestDist) {
-                closestDist = d;
-                closest = h;
-            }
-        }
-    }
 
     // check triangles
     for (int i = 0; i < trisCount; ++i) {
@@ -274,12 +259,12 @@ Hit raycast(Ray ray, Ball balls[numBalls]) {
     return closest;
 }
 
-vec3 raytrace(Ray ray, Ball balls[numBalls], int bounces) {
+vec3 raytrace(Ray ray, int bounces) {
     vec3 incomingLight = vec3(0, 0, 0);
     vec3 rayColor = vec3(1, 1, 1);
 
     for (int i=0; i < bounces; i++) {
-        Hit hit = raycast(ray, balls);
+        Hit hit = raycast(ray);
 
         if (hit.didHit) {
             vec3 diffuseDir = diffuse(hit.normal);
@@ -311,14 +296,14 @@ vec3 raytrace(Ray ray, Ball balls[numBalls], int bounces) {
     return incomingLight;
 }
 
-vec3 trace(Ray ray, Ball balls[numBalls], int bounces, int rays) {
+vec3 trace(Ray ray, int bounces, int rays) {
     vec3 origin = ray.origin;
     vec3 dir = ray.dir;
 
     vec3 color = vec3(0, 0, 0);
 
     for (int i=0; i < rays; i++) {
-        color = color + raytrace(ray, balls, bounces);
+        color = color + raytrace(ray, bounces);
 
         ray.origin = origin;
         ray.dir = dir;
@@ -342,11 +327,6 @@ void main() {
 
     seed = uint(gl_FragCoord.x) * 1973u ^ uint(gl_FragCoord.y) * 9277u ^ uint(frameNumber) * 1664525u;
 
-    Ball balls[numBalls];
-
-    // pos, radius, color, emission, emission_color, smoothness
-    balls[0]  = Ball(vec3(-1000, 100, 1000), 600, vec3(0, 0, 0), 0, vec3(1, 1, 1), 0);   // distant light
-
     Vertex vx1 = Vertex(vec3(-10, 5, -10), vec3(0, 1, 0));
     Vertex vx2 = Vertex(vec3(-10, 5, 10), vec3(0, 1, 0));
     Vertex vx3 = Vertex(vec3(10, 5, 10), vec3(0, 1, 0));
@@ -364,7 +344,7 @@ void main() {
     ray.dir = dir;
     ray.bounces = 0;
 
-    vec3 currColor = trace(ray, balls, nBounces, rays_per_pixel);
+    vec3 currColor = trace(ray, nBounces, rays_per_pixel);
 
     vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : currColor;
 

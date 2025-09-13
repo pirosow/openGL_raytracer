@@ -362,7 +362,7 @@ class App:
 
             last_frame_time = time.time()
 
-            pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(fps)) + " Frame: " + str(self.screen.frame_count) + " Frame render time: " + str(round(deltaTime * 1000)) + "ms" + "Total render time: " + self.get_time())
+            pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(fps)) + " Frame: " + str(self.screen.frame_count) + " Frame render time: " + str(round(deltaTime * 1000)) + "ms" + "T otal render time: " + self.get_time())
 
         screen = pg.display.get_surface()
         size = screen.get_size()
