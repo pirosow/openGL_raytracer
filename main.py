@@ -358,7 +358,11 @@ class App:
 
             deltaTime = time.time() - last_frame_time
 
-            fps = 1 / deltaTime
+            if deltaTime > 0:
+                fps = 1 / deltaTime
+
+            else:
+                fps = 0
 
             last_frame_time = time.time()
 
