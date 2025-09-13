@@ -6,6 +6,8 @@ in vec2 uv;
 
 out vec4 color;
 
+uniform int total_frames;
+
 uniform bool lambertian;
 uniform float skyBrightness;
 
@@ -271,8 +273,7 @@ void main() {
 
     // pos, radius, color, emission, emission_color, smoothness
     balls[0] = Ball(vec3(0, -1010, 20), 1000, vec3(1, 0.2, 0.7), 0, vec3(0, 0, 0), 0);   // floor
-    //balls[1]  = Ball(vec3(-20, 1.5, -10), 13, vec3(0.15, 0.95, 0.15), 0, vec3(0, 0, 0), 0);
-    balls[1]  = Ball(vec3(-10, 1.5, 0.6), 13, vec3(1, 1, 1), 0, vec3(0, 0, 0), 1);
+    balls[1]  = Ball(vec3(-20, 1.5, -10), 13, vec3(0.15, 0.95, 0.15), 0, vec3(0, 0, 0), 0);
     //balls[1]  = Ball(vec3(-19.75, 5, 25), 15, vec3(1, 1, 1), 0, vec3(0, 0, 0), 1);// pink-ish
     balls[2]  = Ball(vec3(10, 5, 20), 15, vec3(1, 1, 1), 0, vec3(0, 0, 0), 1);   // mirror
     balls[3]  = Ball(vec3(-1000, 100, 1000), 600, vec3(0, 0, 0), 2, vec3(1, 1, 1), 0);   // distant light
@@ -291,7 +292,7 @@ void main() {
 
     vec3 currColor = trace(ray, balls, nBounces, rays_per_pixel);
 
-    vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : vec3(0.0);
+    vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : currColor;
 
     // Progressive average
     vec3 colorOut = (prevColor * float(frameNumber) + currColor) / float(frameNumber + 1);

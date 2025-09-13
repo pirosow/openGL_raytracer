@@ -88,6 +88,7 @@ class App:
 
         glUniform1i(glGetUniformLocation(self.shader, "lambertian"), lambertian)
         glUniform1f(glGetUniformLocation(self.shader, "skyBrightness"), skyIllumination)
+        glUniform1i(glGetUniformLocation(self.shader, "total_frames"), 0)
 
         time.sleep(0.1)
 
@@ -148,10 +149,16 @@ class App:
             glClear(GL_COLOR_BUFFER_BIT)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
+        self.time_start = time.time()
+
     def main(self):
         running = True
 
+        self.total_frames = 0
+
         while running:
+            self.total_frames += 1
+
             keys = pg.key.get_pressed()
             delta = pg.mouse.get_rel()
 
@@ -229,6 +236,7 @@ class App:
             glUniform3fv(glGetUniformLocation(self.shader, "camRight"), 1, self.camRight)
             glUniform3fv(glGetUniformLocation(self.shader, "camUp"), 1, self.camUp)
             glUniform3fv(glGetUniformLocation(self.shader, "camForward"), 1, self.camForward)
+            glUniform1i(glGetUniformLocation(self.shader, "total_frames"), self.total_frames)
 
             # render into the NEXT accumulation FBO (do not render into the texture we're reading from)
             glBindFramebuffer(GL_FRAMEBUFFER, self.screen.accum_fbo[next_idx])
@@ -267,11 +275,11 @@ class App:
         pg.quit()
 
 if __name__ == "__main__":
-    rays_per_pixel = 2
+    rays_per_pixel = 1
     bounces = 100
     jitter_amount = 0.00005
     lambertian = True
-    skyBrightness = 0.75
+    skyBrightness = 1
     window_size = (1000, 700)
 
     window = tk.Tk()
