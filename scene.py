@@ -114,7 +114,7 @@ class Scene:
         glBufferData(GL_SHADER_STORAGE_BUFFER, self.tris.nbytes, self.tris, GL_STATIC_DRAW)
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, self.tris_object)
 
-        print("---Scene---")
+        print("\n---Scene---")
         print(f"Number of triangles: {len(self.tris)}")
         print(f"Number of vertices: {len(self.tris) * 3}")
         print(f"Number of objects: {len(objects)}")
