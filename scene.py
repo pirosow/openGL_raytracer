@@ -124,7 +124,7 @@ class Scene:
 
         self.total_triangles = len(self.tris)
 
-        print("Slicing bouding boxes...")
+        print("\nSlicing bounding boxes...")
 
         boxes, indices = self.getBoundingBoxes(slices)
 
@@ -160,12 +160,14 @@ class Scene:
 
         self.indices = np.array(indices, dtype=np.uint32)
 
+        """
         for box in boxes:
             numTris = box["numTriangles"]
             offset = box["triangleOffset"]
 
             for ind in range(offset, numTris + offset):
                 self.tris['emission_color'][ind] = self.random_color(offset)
+        """
 
         self.tris_object = glGenBuffers(1)
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.tris_object)
@@ -182,13 +184,12 @@ class Scene:
         glBufferData(GL_SHADER_STORAGE_BUFFER, self.indices.nbytes, self.indices, GL_STATIC_DRAW)
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, self.indicesObject)
 
-        print(self.boxes)
-
         print("\n---Scene---")
         print(f"Number of triangles: {len(self.tris)}")
         print(f"Number of vertices: {len(self.tris) * 3}")
         print(f"Number of objects: {len(objects)}")
         print(f"Number of bounding boxes: {len(boxes)}")
+        print(f"Average number of triangles per bounding box: {np.round(np.mean(self.numTriangles), 1)}")
 
     def random_color(self, seed):
         rng = np.random.default_rng(seed)  # Seeded random generator

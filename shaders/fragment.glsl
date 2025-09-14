@@ -223,67 +223,55 @@ Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
 bool rayBoundingBoxIntersects(Ray ray, BoundingBox box) {
     float tmin = -1e30;
     float tmax =  1e30;
+    const float EPS = 1e-8;
 
-    float invD = 1.0 / (abs(ray.dir.x) < 1e-6 ? 1e-6 : ray.dir.x);
-    float t0 = (box.posMin.x - ray.origin.x) * invD;
-    float t1 = (box.posMax.x - ray.origin.x) * invD;
-
-    if (invD < 0.0) {
-        float tmp = t0;
-        t0 = t1;
-        t1 = tmp;
+    // X axis
+    float d = ray.dir.x;
+    if (abs(d) < EPS) {
+        if (ray.origin.x < box.posMin.x || ray.origin.x > box.posMax.x) return false;
+    } else {
+        float invD = 1.0 / d;
+        float t0 = (box.posMin.x - ray.origin.x) * invD;
+        float t1 = (box.posMax.x - ray.origin.x) * invD;
+        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+        tmin = max(tmin, t0);
+        tmax = min(tmax, t1);
+        if (tmax < tmin) return false;
     }
 
-    tmin = max(tmin, t0);
-    tmax = min(tmax, t1);
-
-    if (tmax <= tmin) {
-        return false;
+    // Y axis
+    d = ray.dir.y;
+    if (abs(d) < EPS) {
+        if (ray.origin.y < box.posMin.y || ray.origin.y > box.posMax.y) return false;
+    } else {
+        float invD = 1.0 / d;
+        float t0 = (box.posMin.y - ray.origin.y) * invD;
+        float t1 = (box.posMax.y - ray.origin.y) * invD;
+        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+        tmin = max(tmin, t0);
+        tmax = min(tmax, t1);
+        if (tmax < tmin) return false;
     }
 
-    invD = 1.0 / (abs(ray.dir.y) < 1e-6 ? 1e-6 : ray.dir.y);
-    t0 = (box.posMin.y - ray.origin.y) * invD;
-    t1 = (box.posMax.y - ray.origin.y) * invD;
-
-    if (invD < 0.0) {
-        float tmp = t0;
-        t0 = t1;
-        t1 = tmp;
-    }
-
-    tmin = max(tmin, t0);
-    tmax = min(tmax, t1);
-
-    if (tmax <= tmin) {
-        return false;
-    }
-
-    invD = 1.0 / (abs(ray.dir.z) < 1e-6 ? 1e-6 : ray.dir.z);
-    t0 = (box.posMin.z - ray.origin.z) * invD;
-    t1 = (box.posMax.z - ray.origin.z) * invD;
-
-    if (invD < 0.0) {
-        float tmp = t0;
-        t0 = t1;
-        t1 = tmp;
-    }
-
-    tmin = max(tmin, t0);
-    tmax = min(tmax, t1);
-
-    if (tmax <= tmin) {
-        return false;
+    // Z axis
+    d = ray.dir.z;
+    if (abs(d) < EPS) {
+        if (ray.origin.z < box.posMin.z || ray.origin.z > box.posMax.z) return false;
+    } else {
+        float invD = 1.0 / d;
+        float t0 = (box.posMin.z - ray.origin.z) * invD;
+        float t1 = (box.posMax.z - ray.origin.z) * invD;
+        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+        tmin = max(tmin, t0);
+        tmax = min(tmax, t1);
+        if (tmax < tmin) return false;
     }
 
     return true;
 }
 
 
-float getDist(vec3 pos1, vec3 pos2) {
-    float distance = sqrt(pow(pos1.x - pos2.x, 2) + pow(pos1.y - pos2.y, 2) + pow(pos1.z - pos2.z, 2));
-
-    return distance;
-}
+float getDist(vec3 a, vec3 b) { return distance(a, b); }
 
 float RandomValue(inout uint state)
 {
@@ -330,18 +318,15 @@ Hit raycast(Ray ray) {
     Hit closest;
     closest.didHit = false;
 
-    float idx = 0.0;
-
     //check bounding boxes
     for (int i=0; i < boundingBoxCount; i++) {
-        idx++;
-
         BoundingBox boundingBox = boundingBoxes[i];
 
         if (rayBoundingBoxIntersects(ray, boundingBox)) {
             uint start = boundingBox.triangleOffset;
             uint range = boundingBox.numTriangles + start;
 
+            //check triangles
             for (uint j=start; j < range; j++) {
                 Hit h = rayTriangleIntersects(ray, tris[triangleIndices[j]]);
 
@@ -388,7 +373,7 @@ vec3 raytrace(Ray ray, int bounces) {
             ray.bounces++;
 
         } else {
-            incomingLight += getEnvironmentLight(ray) * rayColor;
+            incomingLight += skyColor * skyBrightness; //getEnvironmentLight(ray) * rayColor;
 
             break;
         }

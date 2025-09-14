@@ -54,6 +54,14 @@ class App:
             compileShader(frag_src, GL_FRAGMENT_SHADER)
         )
 
+        self.camPos = np.array([-33.7, 14.8, -21.1], dtype=np.float32)
+        self.camDir = np.array([65, -25.4], dtype=np.float32)
+
+        self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
+
+        self.numTilesX = int((self.w + self.tileSizeX - 1) / self.tileSizeX)
+        self.numTilesY = int((self.h + self.tileSizeY - 1) / self.tileSizeY)
+
         glUseProgram(self.shader)
 
         self.screen = Screen(self.w, self.h, self.sw, self.sh)
@@ -62,7 +70,7 @@ class App:
             [0, -24.75, 0],
             [270, 0, -90],
             "knight",
-            [0.75, 0.75, 0.75],
+            [1, 1, 1],
             roughness=1,
             scale=7
         )
@@ -128,7 +136,7 @@ class App:
             [0, 0, 0],
             [1, 1, 1],
             1.5,
-            scale=10
+            scale=4
         )
 
         self.scene = Scene([
@@ -152,15 +160,6 @@ class App:
         self.yStep = self.fov
 
         self.lambertian = lambertian
-
-        # camera pos and dir (kept same)
-        self.camPos = np.array([-33.7,  14.8, -21.1], dtype=np.float32)
-        self.camDir = np.array( [ 65, -25.4], dtype=np.float32)
-
-        self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
-
-        self.numTilesX = int((self.w + self.tileSizeX - 1) / self.tileSizeX)
-        self.numTilesY = int((self.h + self.tileSizeY - 1) / self.tileSizeY)
 
         # upload static uniforms (same names as in your shader)
         glUniform1f(glGetUniformLocation(self.shader, "fov"), self.fov)
@@ -241,11 +240,14 @@ class App:
             return f"{s}s"
 
     def resetFrames(self):
+        self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
+
         glUniform3fv(glGetUniformLocation(self.shader, "camPos"), 1, self.camPos)
 
         # reset accumulation
-        self.screen.frame_count = 0
-        self.screen.accum_index = 0
+        self.screen.frame_count = 1
+        self.screen.accum_index = 1
+
         for fbo in self.screen.accum_fbo:
             glBindFramebuffer(GL_FRAMEBUFFER, fbo)
             glViewport(0, 0, self.w, self.h)
@@ -261,7 +263,7 @@ class App:
 
         self.total_frames = 0
 
-        frame_count = 0
+        self.frame_count = 0
 
         last_frame_time = time.time()
 
@@ -282,39 +284,39 @@ class App:
 
             self.camDir += delta * self.sensitivity
 
-            self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
+            reset = False
 
             if keys[pg.K_w]:
                 self.camPos += self.speed * self.camForward * self.canMove
 
-                self.resetFrames()
+                reset = True
 
             if keys[pg.K_s]:
                 self.camPos -= self.speed * self.camForward * self.canMove
 
-                self.resetFrames()
+                reset = True
 
             if keys[pg.K_d]:
                 self.camPos += self.speed * self.camRight * self.canMove
 
-                self.resetFrames()
+                reset = True
 
             if keys[pg.K_a]:
                 self.camPos -= self.speed * self.camRight * self.canMove
 
-                self.resetFrames()
+                reset = True
 
             if keys[pg.K_e]:
                 self.camPos += self.speed * self.camUp * self.canMove
 
-                self.resetFrames()
+                reset = True
 
             if keys[pg.K_q]:
                 self.camPos -= self.speed * self.camUp * self.canMove
 
                 self.resetFrames()
 
-            if delta.any() > 0:
+            if delta.any() > 0 or reset:
                 glUniform3fv(glGetUniformLocation(self.shader, "camPos"), 1, self.camPos)
                 glUniform3fv(glGetUniformLocation(self.shader, "camRight"), 1, self.camRight)
                 glUniform3fv(glGetUniformLocation(self.shader, "camUp"), 1, self.camUp)
@@ -393,8 +395,6 @@ class App:
                 self.screen.frame_count) + " Frame render time: " + str(
                 round(deltaTime * 1000)) + "ms" + " Total render time: " + self.get_time())
 
-            frame_count += 1
-
             tileX += 1
 
             if tileX > self.numTilesX:
@@ -438,10 +438,10 @@ if __name__ == "__main__":
     bounces = 2
     jitter_amount = 0.0005
     lambertian = True
-    skyBrightness = 0
+    skyBrightness = 1
     window_size = np.array([1000, 700])
     tileSize = 1
-    boundingBoxSlices = 4
+    boundingBoxSlices = 5
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()
