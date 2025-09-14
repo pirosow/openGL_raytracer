@@ -16,7 +16,7 @@ def read_shader(path):
         return f.read()
 
 class App:
-    def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination):
+    def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination, tileSize, slices):
         pg.init()
 
         # request a 4.3 core context (SSBOs require GL 4.3+)
@@ -26,6 +26,9 @@ class App:
 
         pg.display.set_mode(screen_size, pg.OPENGL | pg.DOUBLEBUF)
         pg.display.set_caption("OpenGL raytracer")
+
+        self.tileSizeX = window_size[0] // tileSize
+        self.tileSizeY = window_size[1] // tileSize
 
         self.speed = 1
 
@@ -56,50 +59,65 @@ class App:
         self.screen = Screen(self.w, self.h, self.sw, self.sh)
 
         self.knight = Mesh(
-            [0, -24, 0],
+            [0, -24.75, 0],
             [270, 0, -90],
             "knight",
             [0.75, 0.75, 0.75],
+            roughness=1,
             scale=7
         )
 
         self.redWall = Rect(
-            [5, 5, 0.1],
-            [0, 0, -25],
+            [8, 5, 0.1],
+            [0, 0, 30],
             [0, 0, 0],
             [1, 0, 0],
+            roughness=1,
             scale=10
         )
 
         self.blueWall = Rect(
-            [5, 5, 0.1],
-            [0, 0, 25],
+            [8, 5, 0.1],
+            [0, 0, -30],
             [0, 0, 0],
             [0, 0, 1],
+            roughness=1,
             scale=10
         )
 
         self.greenWall = Rect(
-            [5, 5, 0.1],
-            [25, 0, 0],
-            [0, 90, 0],
+            [8, 6, 0.1],
+            [0, -25, 0],
+            [90, 0, 0],
             [0, 1, 0],
+            roughness=1,
             scale=10
         )
 
-        self.ground = Rect(
-            [5, 5, 0.1],
-            [0, -25, 0],
-            [90, 0, 0],
-            [1, 1, 1],
+        self.backWall = Rect(
+            [6, 8, 0.1],
+            [-35, 0, 0],
+            [0, 90, 0],
+            [0.8, 0.8, 0.8],
+            roughness=1,
+            scale=10
+        )
+
+        self.frontWall = Rect(
+            [6, 8, 0.1],
+            [25, 0, 0],
+            [0, 90, 0],
+            [0.8, 0.8, 0.8],
+            roughness=1,
             scale=10
         )
 
         self.floor = Rect(
-            [5, 5, 0.1],
+            [8, 6, 0.1],
             [0, 25, 0],
             [90, 0, 0],
             [1, 1, 1],
+            roughness=1,
             scale=10
         )
 
@@ -109,8 +127,8 @@ class App:
             [-90, 0, 0],
             [0, 0, 0],
             [1, 1, 1],
-            2,
-            scale=4
+            1.5,
+            scale=10
         )
 
         self.scene = Scene([
@@ -118,15 +136,16 @@ class App:
             self.redWall,
             self.blueWall,
             self.greenWall,
-            self.ground,
+            self.frontWall,
             self.floor,
-            self.light
-        ])
+            self.light,
+            self.backWall
+        ], slices)
 
         self.clock = pg.time.Clock()
 
         # your camera & uniforms (kept same as your original code)
-        self.fov = np.radians(60)
+        self.fov = np.radians(90)
         self.dirStartX = -self.fov / 2 * self.aspect
         self.dirStartY = -self.fov / 2
         self.xStep = self.fov * self.aspect
@@ -135,10 +154,13 @@ class App:
         self.lambertian = lambertian
 
         # camera pos and dir (kept same)
-        self.camPos = np.array([-73, 0, -1], dtype=np.float32)
-        self.camDir = np.array([90, 0], dtype=np.float32)
+        self.camPos = np.array([-33.7,  14.8, -21.1], dtype=np.float32)
+        self.camDir = np.array( [ 65, -25.4], dtype=np.float32)
 
         self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
+
+        self.numTilesX = int((self.w + self.tileSizeX - 1) / self.tileSizeX)
+        self.numTilesY = int((self.h + self.tileSizeY - 1) / self.tileSizeY)
 
         # upload static uniforms (same names as in your shader)
         glUniform1f(glGetUniformLocation(self.shader, "fov"), self.fov)
@@ -159,7 +181,16 @@ class App:
         glUniform1i(glGetUniformLocation(self.shader, "lambertian"), self.lambertian)
         glUniform1f(glGetUniformLocation(self.shader, "skyBrightness"), skyIllumination)
         glUniform1i(glGetUniformLocation(self.shader, "total_frames"), 0)
-        glUniform1i(glGetUniformLocation(self.shader, "trisCount"), len(self.knight.total_vertices))
+        glUniform1i(glGetUniformLocation(self.shader, "trisCount"), self.scene.total_triangles)
+
+        glUniform1i(glGetUniformLocation(self.shader, "tileX"), 0)
+        glUniform1i(glGetUniformLocation(self.shader, "tileY"), 0)
+        glUniform1i(glGetUniformLocation(self.shader, "tileSizeX"), self.tileSizeX)
+        glUniform1i(glGetUniformLocation(self.shader, "tileSizeY"), self.tileSizeY)
+
+        glUniform1i(glGetUniformLocation(self.shader, "numTilesX"), self.numTilesX)
+        glUniform1i(glGetUniformLocation(self.shader, "numTilesY"), self.numTilesY)
+        glUniform1i(glGetUniformLocation(self.shader, "boundingBoxCount"), self.scene.total_boxes)
 
         time.sleep(0.1)
 
@@ -210,6 +241,8 @@ class App:
             return f"{s}s"
 
     def resetFrames(self):
+        glUniform3fv(glGetUniformLocation(self.shader, "camPos"), 1, self.camPos)
+
         # reset accumulation
         self.screen.frame_count = 0
         self.screen.accum_index = 0
@@ -218,6 +251,7 @@ class App:
             glViewport(0, 0, self.w, self.h)
             glClearColor(0.0, 0.0, 0.0, 0.0)
             glClear(GL_COLOR_BUFFER_BIT)
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
         self.time_start = time.time()
@@ -227,7 +261,16 @@ class App:
 
         self.total_frames = 0
 
+        frame_count = 0
+
         last_frame_time = time.time()
+
+        tileX, tileY = 0, 0
+
+        fps = 0
+        deltaTime = 0
+
+        time.sleep(1)
 
         while running:
             self.total_frames += 1
@@ -272,6 +315,11 @@ class App:
                 self.resetFrames()
 
             if delta.any() > 0:
+                glUniform3fv(glGetUniformLocation(self.shader, "camPos"), 1, self.camPos)
+                glUniform3fv(glGetUniformLocation(self.shader, "camRight"), 1, self.camRight)
+                glUniform3fv(glGetUniformLocation(self.shader, "camUp"), 1, self.camUp)
+                glUniform3fv(glGetUniformLocation(self.shader, "camForward"), 1, self.camForward)
+
                 self.resetFrames()
 
             for event in pg.event.get():
@@ -317,56 +365,58 @@ class App:
             # bind previous accumulation as prevFrame (texture unit 0)
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, self.screen.accum_tex[prev_idx])
-            loc_prev = glGetUniformLocation(self.shader, "prevFrame")
 
-            if loc_prev != -1:
-                glUniform1i(loc_prev, 0)
+            glUniform1i(glGetUniformLocation(self.shader, "prevFrame"), 0)
+            glUniform1i(glGetUniformLocation(self.shader, "frameNumber"), int(self.screen.frame_count))
 
-            # set frameNumber (0-based) — shader expects this
-            loc_fn = glGetUniformLocation(self.shader, "frameNumber")
-            if loc_fn != -1:
-                glUniform1i(loc_fn, int(self.screen.frame_count))
-
-            # set frame seed (if your shader reads 'frame' for random)
-            loc_f = glGetUniformLocation(self.shader, "frame")
-            if loc_f != -1:
-                glUniform1f(loc_f, random.uniform(0.0, 1.0))
-
-            glUniform3fv(glGetUniformLocation(self.shader, "camPos"), 1, self.camPos)
-            glUniform3fv(glGetUniformLocation(self.shader, "camRight"), 1, self.camRight)
-            glUniform3fv(glGetUniformLocation(self.shader, "camUp"), 1, self.camUp)
-            glUniform3fv(glGetUniformLocation(self.shader, "camForward"), 1, self.camForward)
-            glUniform1i(glGetUniformLocation(self.shader, "total_frames"), self.total_frames)
+            glUniform1i(glGetUniformLocation(self.shader, "tileX"), tileX)
+            glUniform1i(glGetUniformLocation(self.shader, "tileY"), tileY)
 
             # render into the NEXT accumulation FBO (do not render into the texture we're reading from)
             glBindFramebuffer(GL_FRAMEBUFFER, self.screen.accum_fbo[next_idx])
             glViewport(0, 0, self.w, self.h)
 
             glBindVertexArray(self.screen.vao)
-            glDrawArrays(GL_TRIANGLES, 0, 6)
+            glDrawArrays(GL_TRIANGLES, 0, 3)
+            glDrawArrays(GL_TRIANGLES, 3, 3)
 
             # blit the result we just produced to the default framebuffer so the window shows it
             glBindFramebuffer(GL_READ_FRAMEBUFFER, self.screen.accum_fbo[next_idx])
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)
             glBlitFramebuffer(0, 0, self.w, self.h, 0, 0, self.sw, self.sh, GL_COLOR_BUFFER_BIT, GL_NEAREST)
 
-            # swap and increment
             self.screen.accum_index = next_idx
-            self.screen.frame_count += 1
 
             pg.display.flip()
 
-            deltaTime = time.time() - last_frame_time
+            pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(fps)) + " Frame: " + str(
+                self.screen.frame_count) + " Frame render time: " + str(
+                round(deltaTime * 1000)) + "ms" + " Total render time: " + self.get_time())
 
-            if deltaTime > 0:
-                fps = 1 / deltaTime
+            frame_count += 1
 
-            else:
-                fps = 0
+            tileX += 1
 
-            last_frame_time = time.time()
+            if tileX > self.numTilesX:
+                tileY += 1
+                tileX = 0
 
-            pg.display.set_caption("OpenGL raytracer! Fps: " + str(round(fps)) + " Frame: " + str(self.screen.frame_count) + " Frame render time: " + str(round(deltaTime * 1000)) + "ms" + " Total render time: " + self.get_time())
+                if tileY > self.numTilesY:
+                    tileY = 0
+
+                    self.screen.frame_count += 1
+
+                    deltaTime = time.time() - last_frame_time
+
+                    if deltaTime > 0:
+                        fps = 1 / deltaTime
+
+                    else:
+                        fps = 0
+
+                    last_frame_time = time.time()
+
+                    glUniform1i(glGetUniformLocation(self.shader, "total_frames"), self.total_frames)
 
         screen = pg.display.get_surface()
         size = screen.get_size()
@@ -385,11 +435,13 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 100
+    bounces = 2
     jitter_amount = 0.0005
     lambertian = True
     skyBrightness = 0
     window_size = np.array([1000, 700])
+    tileSize = 1
+    boundingBoxSlices = 4
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()
@@ -397,4 +449,4 @@ if __name__ == "__main__":
     screen_size = (int(screen_width // 1.15), int(screen_height // 1.15))
     window.destroy()
 
-    App(window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness)
+    App(window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness, tileSize, boundingBoxSlices)

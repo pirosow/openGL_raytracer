@@ -3,7 +3,7 @@ import numpy as np
 from OpenGL.GL import *
 
 class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
-    def __init__(self, pos, eulers, dirPath, color, emission_color=[0, 0, 0], emission=0, roughness=0, scale=1):
+    def __init__(self, pos, eulers, dirPath, color=[0, 0, 0], emission_color=[0, 0, 0], emission=0, roughness=0, scale=1):
         dirPath = os.path.join("models/", dirPath)
 
         print(f"Loading {dirPath}...")
@@ -234,7 +234,7 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
         ]
 
 class Rect:
-    def __init__(self, size, pos, eulers, color, emission_color=[0, 0, 0], emission=0, roughness=0, scale=1):
+    def __init__(self, size, pos, eulers, color=[0, 0, 0], emission_color=[0, 0, 0], emission=0, roughness=0, scale=1):
         self.position = np.array(pos, dtype=np.float32)
         self.eulers = np.array(eulers, dtype=np.float32)
         self.scale = np.array([scale, scale, scale], dtype=np.float32)

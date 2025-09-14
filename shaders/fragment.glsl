@@ -4,6 +4,13 @@ in vec2 uv;
 
 out vec4 color;
 
+uniform int tileX;
+uniform int tileY;
+uniform int tileSizeX;
+uniform int tileSizeY;
+uniform int numTilesX;
+uniform int numTilesY;
+
 uniform int total_frames;
 
 uniform bool lambertian;
@@ -24,14 +31,11 @@ uniform int nBounces;
 uniform int rays_per_pixel;
 uniform float jitterAmount;
 
-uniform float frame;
-
 uniform sampler2D prevFrame;
 uniform int frameNumber;
 
-uniform int nVertices;
-
-int trisCount;
+uniform int trisCount;
+uniform int boundingBoxCount;
 
 uint seed;
 
@@ -69,8 +73,8 @@ struct Triangle {
 
     vec3 color;
     vec3 emission_color;
-    float roughness;
-    float emission;
+
+    vec2 surface;
 };
 
 struct Hit {
@@ -86,8 +90,27 @@ struct Hit {
     float roughness;
 };
 
+struct BoundingBox {
+    uint numTriangles;
+    uint triangleOffset;
+
+    uint childA;
+    uint childB;
+
+    vec3 posMin;
+    vec3 posMax;
+};
+
 layout (std430, binding=0) buffer TriBuffer {
     Triangle tris[];
+};
+
+layout (std430, binding=1) buffer boundingBoxBuffer {
+    BoundingBox boundingBoxes[];
+};
+
+layout (std430, binding=2) buffer indicesBuffer {
+    uint triangleIndices[];
 };
 
 vec3 normalizeTriangle(vec3 v0, vec3 v1, vec3 v2) {
@@ -138,6 +161,9 @@ Hit raySphereIntersects(Ray ray, Ball ball) {
 }
 
 Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
+    Hit hit;
+    hit.didHit = false;
+
     const float EPS = 1e-6f;
 
     vec3 edgeAB = triangle.v1.pos - triangle.v0.pos;
@@ -150,8 +176,7 @@ Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
     float determinant = dot(ray.dir, triangleFaceVector);
     if (abs(determinant) < EPS) {
         // Ray is parallel to triangle plane (or nearly so) -> no hit
-        return Hit(false, vec3(999,999,999), vec3(0,0,0),
-                   triangle.color, triangle.emission, triangle.emission_color, triangle.roughness);
+        return hit;
     }
 
     float invDet = 1.0f / determinant;
@@ -162,8 +187,7 @@ Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
 
     // reject hits behind the ray origin or extremely close
     if (t <= EPS) {
-        return Hit(false, vec3(999,999,999), vec3(0,0,0),
-                   triangle.color, triangle.emission, triangle.emission_color, triangle.roughness);
+        return hit;
     }
 
     // compute barycentric coordinates
@@ -173,8 +197,7 @@ Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
 
     // point is inside triangle iff u >= 0, v >= 0, u+v <= 1
     if (u < 0.0f || v < 0.0f || (u + v) > 1.0f) {
-        return Hit(false, vec3(999,999,999), vec3(0,0,0),
-                   triangle.color, triangle.emission, triangle.emission_color, triangle.roughness);
+        return hit;
     }
 
     // success — compute hit point & normal
@@ -186,8 +209,73 @@ Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
         normal = -normal;
     }
 
-    return Hit(true, hit_point, normal,
-               triangle.color, triangle.emission, triangle.emission_color, triangle.roughness);
+    hit.didHit = true;
+    hit.hit_point = hit_point;
+    hit.normal = normal;
+    hit.color = triangle.color;
+    hit.emission = triangle.surface.x;
+    hit.emission_color = triangle.emission_color;
+    hit.roughness = triangle.surface.y;
+
+    return hit;
+}
+
+bool rayBoundingBoxIntersects(Ray ray, BoundingBox box) {
+    float tmin = -1e30;
+    float tmax =  1e30;
+
+    float invD = 1.0 / (abs(ray.dir.x) < 1e-6 ? 1e-6 : ray.dir.x);
+    float t0 = (box.posMin.x - ray.origin.x) * invD;
+    float t1 = (box.posMax.x - ray.origin.x) * invD;
+
+    if (invD < 0.0) {
+        float tmp = t0;
+        t0 = t1;
+        t1 = tmp;
+    }
+
+    tmin = max(tmin, t0);
+    tmax = min(tmax, t1);
+
+    if (tmax <= tmin) {
+        return false;
+    }
+
+    invD = 1.0 / (abs(ray.dir.y) < 1e-6 ? 1e-6 : ray.dir.y);
+    t0 = (box.posMin.y - ray.origin.y) * invD;
+    t1 = (box.posMax.y - ray.origin.y) * invD;
+
+    if (invD < 0.0) {
+        float tmp = t0;
+        t0 = t1;
+        t1 = tmp;
+    }
+
+    tmin = max(tmin, t0);
+    tmax = min(tmax, t1);
+
+    if (tmax <= tmin) {
+        return false;
+    }
+
+    invD = 1.0 / (abs(ray.dir.z) < 1e-6 ? 1e-6 : ray.dir.z);
+    t0 = (box.posMin.z - ray.origin.z) * invD;
+    t1 = (box.posMax.z - ray.origin.z) * invD;
+
+    if (invD < 0.0) {
+        float tmp = t0;
+        t0 = t1;
+        t1 = tmp;
+    }
+
+    tmin = max(tmin, t0);
+    tmax = min(tmax, t1);
+
+    if (tmax <= tmin) {
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -226,7 +314,7 @@ vec3 diffuse(vec3 normal) {
 }
 
 vec3 lerp(vec3 diffuseDir, vec3 specularDir, float n) {
-    float t = n;
+    float t = 1 - n;
 
     vec3 d0 = length(diffuseDir) > 0.0 ? normalize(diffuseDir) : vec3(0.0);
     vec3 d1 = length(specularDir) > 0.0 ? normalize(specularDir) : vec3(0.0);
@@ -242,16 +330,29 @@ Hit raycast(Ray ray) {
     Hit closest;
     closest.didHit = false;
 
-    // check triangles
-    for (int i = 0; i < trisCount; ++i) {
-        Hit h = rayTriangleIntersects(ray, tris[i]);
+    float idx = 0.0;
 
-        if (h.didHit) {
-            float d = getDist(ray.origin, h.hit_point);
+    //check bounding boxes
+    for (int i=0; i < boundingBoxCount; i++) {
+        idx++;
 
-            if (d < closestDist) {
-                closestDist = d;
-                closest = h;
+        BoundingBox boundingBox = boundingBoxes[i];
+
+        if (rayBoundingBoxIntersects(ray, boundingBox)) {
+            uint start = boundingBox.triangleOffset;
+            uint range = boundingBox.numTriangles + start;
+
+            for (uint j=start; j < range; j++) {
+                Hit h = rayTriangleIntersects(ray, tris[triangleIndices[j]]);
+
+                if (h.didHit) {
+                    float d = getDist(ray.origin, h.hit_point);
+
+                    if (d < closestDist) {
+                        closestDist = d;
+                        closest = h;
+                    }
+                }
             }
         }
     }
@@ -273,7 +374,7 @@ vec3 raytrace(Ray ray, int bounces) {
             vec3 dir = lerp(diffuseDir, specularDir, hit.roughness);
 
             ray.dir = dir;
-            ray.origin = hit.hit_point + hit.normal * 0.05;
+            ray.origin = hit.hit_point + hit.normal * 1e-4;
 
             vec3 emittedLight = hit.emission_color * hit.emission;
 
@@ -321,15 +422,20 @@ vec3 getDir(float x, float y) {
 }
 
 void main() {
-    trisCount = tris.length();
+    // Compute pixel index
+    int px = int(gl_FragCoord.x);
+    int py = int(gl_FragCoord.y);
+
+    // Check if this pixel belongs to the current tile
+    if ((px / tileSizeX) % numTilesX != tileX || (py / tileSizeY) % numTilesY != tileY) {
+        color = texture(prevFrame, uv);
+
+        return;
+    }
 
     skyColor = vec3(0.1, 0.6, 0.92);
 
     seed = uint(gl_FragCoord.x) * 1973u ^ uint(gl_FragCoord.y) * 9277u ^ uint(frameNumber) * 1664525u;
-
-    Vertex vx1 = Vertex(vec3(-10, 5, -10), vec3(0, 1, 0));
-    Vertex vx2 = Vertex(vec3(-10, 5, 10), vec3(0, 1, 0));
-    Vertex vx3 = Vertex(vec3(10, 5, 10), vec3(0, 1, 0));
 
     RandomValue(seed);
     RandomValue(seed);
