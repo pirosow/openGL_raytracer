@@ -58,14 +58,16 @@ class Scene:
         self.boundingBoxStruct = np.dtype([
             ("numTriangles", np.uint32),
             ("triangleOffset", np.uint32),
-            ("childA", np.uint32),
-            ("childB", np.uint32),
+            ("childA", np.int32),
+            ("childB", np.int32),
 
             ("posMin", np.float32, 3),
             ("_pad2", np.float32),
             ("posMax", np.float32, 3),
             ("_pad3", np.float32),
         ])
+
+        print("Calculating triangles...")
 
         # ----- build triangles by consuming vertices 3-at-a-time -----
         n_vertices = self.pos.shape[0]
@@ -126,48 +128,83 @@ class Scene:
 
         print("\nSlicing bounding boxes...")
 
-        boxes, indices = self.getBoundingBoxes(slices)
+        indices, totalBoxes, leaves = self.getBoundingBoxes(slices)
 
-        self.boxes = np.zeros(len(boxes), dtype=self.boundingBoxStruct)
+        print("\nSending scene data to gpu...")
+
+        self.boxes = np.zeros(len(totalBoxes), dtype=self.boundingBoxStruct)
 
         self.numTriangles = []
         self.triangleOffsets = []
         self.posMin = []
         self.posMax = []
+        self.childA = []
+        self.childB = []
 
-        for box in boxes:
+        step = len(totalBoxes) // 100
+
+        for i, box in enumerate(totalBoxes):
+            if i % step == 0:
+                print(f"\rBox {i + 1}/{len(totalBoxes)}...", end="")
+
             numTris = box["numTriangles"]
             offset = box["triangleOffset"]
             posMin = box["posMin"]
             posMax = box["posMax"]
 
+            if "childA" in list(box.keys()):
+                childA = box["childA"]
+
+            else:
+                childA = -1
+
+            if "childB" in list(box.keys()):
+                childB = box["childB"]
+
+            else:
+                childA = -1
+                childB = -1
+
+            avgTris = 0
+            minTris = 0
+            maxTris = 0
+
             self.numTriangles.append(numTris)
             self.triangleOffsets.append(offset)
             self.posMin.append(posMin)
             self.posMax.append(posMax)
+            self.childA.append(childA)
+            self.childB.append(childB)
+
+        for box in leaves:
+            length = len(box)
+            if length > maxTris:
+                maxTris = length
+
+            if length < minTris:
+                minTris = length
+
+            avgTris += length
+
+        avgTris /= len(leaves)
 
         self.numTriangles = np.array(self.numTriangles, dtype=np.uint32)
         self.triangleOffsets = np.array(self.triangleOffsets, dtype=np.uint32)
         self.posMin = np.array(self.posMin, dtype=np.float32)
         self.posMax = np.array(self.posMax, dtype=np.float32)
+        self.childA = np.array(self.childA, dtype=np.int32)
+        self.childB = np.array(self.childB, dtype=np.int32)
 
         self.boxes['numTriangles'] = self.numTriangles
         self.boxes['triangleOffset'] = self.triangleOffsets
         self.boxes['posMin'] = self.posMin
         self.boxes['posMax'] = self.posMax
+        self.boxes['childA'] = self.childA
+        self.boxes['childB'] = self.childB
 
         self.total_boxes = len(self.boxes)
 
         self.indices = np.array(indices, dtype=np.uint32)
-
-        """
-        for box in boxes:
-            numTris = box["numTriangles"]
-            offset = box["triangleOffset"]
-
-            for ind in range(offset, numTris + offset):
-                self.tris['emission_color'][ind] = self.random_color(offset)
-        """
 
         self.tris_object = glGenBuffers(1)
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.tris_object)
@@ -184,12 +221,14 @@ class Scene:
         glBufferData(GL_SHADER_STORAGE_BUFFER, self.indices.nbytes, self.indices, GL_STATIC_DRAW)
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, self.indicesObject)
 
-        print("\n---Scene---")
+        print("\n\n---Scene---")
         print(f"Number of triangles: {len(self.tris)}")
         print(f"Number of vertices: {len(self.tris) * 3}")
         print(f"Number of objects: {len(objects)}")
-        print(f"Number of bounding boxes: {len(boxes)}")
-        print(f"Average number of triangles per bounding box: {np.round(np.mean(self.numTriangles), 1)}")
+        print(f"Number of bounding boxes: {len(totalBoxes)}")
+        print(f"Avg number of triangles per bounding box: {np.round(avgTris, 1)}")
+        print(f"Min number of triangles per bounding box: {minTris}")
+        print(f"Max number of triangles per bounding box: {maxTris}")
 
     def random_color(self, seed):
         rng = np.random.default_rng(seed)  # Seeded random generator
@@ -220,42 +259,87 @@ class Scene:
 
         boundingBoxes = [start]
 
-        for i in range(slices):
-            lastBoundingBoxes = []
+        totalBoundingBoxes = [{"box": start}]
 
-            for boundingBox in boundingBoxes:
+        childBoundingBoxes = [start]
+
+        idx = 0
+
+        print("")
+
+        minus = 0
+
+        for slice in range(slices):
+            print(f"\rSlicing {slice + 1}/{slices}... Total number of boxes: {len(totalBoundingBoxes)}", end="")
+
+            lastBoundingBoxes = childBoundingBoxes.copy()
+            childBoundingBoxes = []
+
+            length = len(lastBoundingBoxes)
+
+            print("")
+
+            step = max(length // 100, 1)
+
+            for i, boundingBox in enumerate(lastBoundingBoxes):
+                if i % step == 0:
+                    print(f"\r{round(i / length * 100, 2)}%...", end="")
+
+                idx += 1
+
+                parentIndex = boundingBoxes.index(boundingBox)
+
+                b1Index = parentIndex + idx + minus
+                b2Index = parentIndex + idx + 1 + minus
+
                 b1, b2 = self.sliceBoundingBox(boundingBox)
 
                 if len(b1) > 0:
-                    lastBoundingBoxes.append(b1)
+                    totalBoundingBoxes[parentIndex]["childA"] = b1Index
+                    childBoundingBoxes.append(b1)
+
+                else:
+                    minus -= 1
 
                 if len(b2) > 0:
-                    lastBoundingBoxes.append(b2)
+                    totalBoundingBoxes[parentIndex]["childB"] = b2Index
+                    childBoundingBoxes.append(b2)
 
-            boundingBoxes = lastBoundingBoxes.copy()
+                else:
+                    minus -= 1
+
+            boundingBoxes += childBoundingBoxes.copy()
+
+            for boundingBox in childBoundingBoxes:
+                totalBoundingBoxes.append({"box": boundingBox})
 
         indices = []
 
-        resBoxes = []
-
         offset = 0
 
-        for i, box in enumerate(boundingBoxes):
-            if len(box) > 0:
-                resBox = {}
+        print("\nAdding data to boxes...")
 
-                resBox["numTriangles"] = np.uint32(len(box))
-                resBox["triangleOffset"] = np.uint32(offset)
-                resBox["posMin"], resBox["posMax"] = self.getBoundingBoxCorners(box)
+        step = len(totalBoundingBoxes) // 100
 
-                resBoxes.append(resBox)
+        for i, box in enumerate(totalBoundingBoxes):
+            if i % step == 0:
+                print(f"\rBox {i + 1}/{len(totalBoundingBoxes)}...", end="")
 
-                for index in box:
+            if len(box["box"]) > 0:
+                box["numTriangles"] = np.uint32(len(box["box"]))
+                box["triangleOffset"] = np.uint32(offset)
+                box["posMin"], box["posMax"] = self.getBoundingBoxCorners(box["box"])
+
+                if "childA" not in list(box.keys()):
+                    box["childA"] = -1
+                    box["childB"] = -1
+
+                for index in box["box"]:
                     offset += 1
 
                     indices.append(index)
 
-        return resBoxes, indices
+        return indices, totalBoundingBoxes, childBoundingBoxes
 
     def getBoundingBoxCorners(self, box):
         box = list(box)

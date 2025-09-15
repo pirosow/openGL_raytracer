@@ -21,7 +21,7 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
                 objFilePath = os.path.join(dirPath, file)
 
         if objFilePath is not None:
-            self.total_vertices, self.faces = self.loadObj(objFilePath)
+            self.total_vertices = self.loadObj(objFilePath)
 
         # after these lines (your existing code)
         self.total_vertices = self.total_vertices.reshape(-1, 8).astype(np.float32)
@@ -145,7 +145,7 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
             vertices = np.array(vertices, dtype=np.float32)
             faces = np.array(faces, dtype=np.float32)
 
-        return vertices, faces
+        return vertices
 
     #f 1/2/3 2/3/2 4/2/5 3/2/4
     def read_faces(self, faces, vp, vn, vt, vertices, facesList):
@@ -159,15 +159,6 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
             vertices.append(v1)
             vertices.append(v2)
             vertices.append(v3)
-
-            facesList.append(self.get_face(faces[0]))
-            facesList.append(self.get_face(faces[1]))
-            facesList.append(self.get_face(faces[2]))
-
-    def get_face(self, face):
-        faces = face.split("/")
-
-        return [int(faces[0]) - 1, int(faces[1]) - 1, int(faces[2]) - 1]
 
     def getVertex(self, face, vp, vn, vt):
         #vp/vt/vn

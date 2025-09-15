@@ -4,6 +4,8 @@ in vec2 uv;
 
 out vec4 color;
 
+uniform int splits;
+
 uniform int tileX;
 uniform int tileY;
 uniform int tileSizeX;
@@ -88,14 +90,16 @@ struct Hit {
     vec3 emission_color;
 
     float roughness;
+
+    float t;
 };
 
 struct BoundingBox {
     uint numTriangles;
     uint triangleOffset;
 
-    uint childA;
-    uint childB;
+    int childA;
+    int childB;
 
     vec3 posMin;
     vec3 posMax;
@@ -130,7 +134,7 @@ Hit raySphereIntersects(Ray ray, Ball ball) {
     float discr = b * b - 4 * c;
 
     if (discr < 0) {
-        return Hit(false, vec3(999, 999, 999), vec3(0, 0, 0), ball.color, ball.emission, ball.emission_color, ball.roughness);
+        return Hit(false, vec3(999, 999, 999), vec3(0, 0, 0), ball.color, ball.emission, ball.emission_color, ball.roughness, 0);
     }
 
     float sqrt_d = sqrt(discr);
@@ -147,7 +151,7 @@ Hit raySphereIntersects(Ray ray, Ball ball) {
     } else if (t1 > eps) {
         t = t1;
     } else {
-        return Hit(false, vec3(999, 999, 999), vec3(0, 0, 0), ball.color, ball.emission, ball.emission_color, ball.roughness);
+        return Hit(false, vec3(999, 999, 999), vec3(0, 0, 0), ball.color, ball.emission, ball.emission_color, ball.roughness, t);
     }
 
     vec3 hit_point = origin + ray.dir * t;
@@ -157,7 +161,7 @@ Hit raySphereIntersects(Ray ray, Ball ball) {
         normal = -1 * normal;
     }
 
-    return Hit(true, hit_point, normal, ball.color, ball.emission, ball.emission_color, ball.roughness);
+    return Hit(true, hit_point, normal, ball.color, ball.emission, ball.emission_color, ball.roughness, t);
 }
 
 Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
@@ -313,30 +317,95 @@ vec3 getEnvironmentLight(Ray ray) {
     return skyColor * skyBrightness;
 }
 
+BoundingBox getLeafBoundingBox(Ray ray, BoundingBox box) {
+    BoundingBox testBox = box;
+
+    while (true) {
+        if (testBox.childA == -1) {
+            break;
+        }
+
+        if (rayBoundingBoxIntersects(ray, boundingBoxes[testBox.childA])) {
+            testBox = boundingBoxes[testBox.childA];
+        } else {
+            testBox = boundingBoxes[testBox.childB];
+       }
+    }
+
+    return testBox;
+}
+
 Hit raycast(Ray ray) {
     float closestDist = 1e30;
     Hit closest;
     closest.didHit = false;
 
-    //check bounding boxes
-    for (int i=0; i < boundingBoxCount; i++) {
-        BoundingBox boundingBox = boundingBoxes[i];
+    const int MAX_STACK = 128;        // <<-- much larger than 20
+    int nodeStack[MAX_STACK];
+    int stackPtr = 0;
 
-        if (rayBoundingBoxIntersects(ray, boundingBox)) {
-            uint start = boundingBox.triangleOffset;
-            uint range = boundingBox.numTriangles + start;
+    // push root (index 0)
+    nodeStack[stackPtr++] = 0;
 
-            //check triangles
-            for (uint j=start; j < range; j++) {
-                Hit h = rayTriangleIntersects(ray, tris[triangleIndices[j]]);
+    while (stackPtr > 0) {
+        int nodeIdx = nodeStack[--stackPtr];
 
+        // defensive: ensure nodeIdx within range (optional if you trust CPU)
+        if (nodeIdx < 0 || nodeIdx >= boundingBoxCount) continue;
+
+        BoundingBox box = boundingBoxes[nodeIdx];
+
+        // AABB test
+        if (!rayBoundingBoxIntersects(ray, box)) {
+            continue;
+        }
+
+        // canonical leaf test: use numTriangles > 0 as leaf indicator
+        if (box.childA == -1) {
+            // defensive bounds check before looping
+            uint start = box.triangleOffset;
+            uint count = box.numTriangles;
+            uint end = start + count;
+            // optional: clamp end to available indices (prevents runaway reads)
+            // if (end > trianglesIndexCount) end = trianglesIndexCount;
+
+            for (uint ti = start; ti < end; ++ti) {
+                uint triIdx = triangleIndices[ti];
+                // defensive: ensure triIdx < trisCount (optional)
+                if (triIdx >= uint(trisCount)) continue;
+
+                Hit h = rayTriangleIntersects(ray, tris[triIdx]);
                 if (h.didHit) {
+                    // using distance is ok, but faster to use t if you return it from the intersector
                     float d = getDist(ray.origin, h.hit_point);
-
-                    if (d < closestDist) {
+                    if (d < closestDist && d > 1e-6) {
                         closestDist = d;
                         closest = h;
                     }
+                }
+            }
+        } else {
+            // internal node: push children if valid
+            int a = box.childA;
+            int b = box.childB;
+
+            // push children, but ensure we won't overflow the stack.
+            // Prefer pushing the one you care less about first so nearer gets popped next (if you compute t's later).
+            if (a != -1) {
+                if (stackPtr + 1 >= MAX_STACK) {
+                    // handle overflow: push one child only (prefer the one likely nearer if you can compute t)
+                    // For safety, push the one with smaller index (arbitrary fallback):
+                    if (b != -1 && (stackPtr < MAX_STACK)) nodeStack[stackPtr++] = b;
+                } else {
+                    nodeStack[stackPtr++] = a;
+                }
+            }
+            if (b != -1) {
+                if (stackPtr + 1 >= MAX_STACK) {
+                    // same fallback
+                    if (a != -1 && (stackPtr < MAX_STACK)) nodeStack[stackPtr++] = a;
+                } else {
+                    nodeStack[stackPtr++] = b;
                 }
             }
         }
@@ -430,6 +499,8 @@ void main() {
 
     dir += (camRight * RandomValue(seed) + camUp * RandomValue(seed)) * jitterAmount;
 
+    dir = normalize(dir);
+
     Ray ray;
     ray.origin = camPos;
     ray.dir = dir;
@@ -437,7 +508,7 @@ void main() {
 
     vec3 currColor = trace(ray, nBounces, rays_per_pixel);
 
-    vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : currColor;
+    vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : texture(prevFrame, uv).rgb;
 
     // Progressive average
     vec3 colorOut = (prevColor * float(frameNumber) + currColor) / float(frameNumber + 1);

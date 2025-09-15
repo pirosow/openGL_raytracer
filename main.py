@@ -107,7 +107,7 @@ class App:
             [-35, 0, 0],
             [0, 90, 0],
             [0.8, 0.8, 0.8],
-            roughness=1,
+            roughness=0,
             scale=10
         )
 
@@ -116,7 +116,7 @@ class App:
             [25, 0, 0],
             [0, 90, 0],
             [0.8, 0.8, 0.8],
-            roughness=1,
+            roughness=0,
             scale=10
         )
 
@@ -190,6 +190,8 @@ class App:
         glUniform1i(glGetUniformLocation(self.shader, "numTilesX"), self.numTilesX)
         glUniform1i(glGetUniformLocation(self.shader, "numTilesY"), self.numTilesY)
         glUniform1i(glGetUniformLocation(self.shader, "boundingBoxCount"), self.scene.total_boxes)
+
+        glUniform1i(glGetUniformLocation(self.shader, "splits"), slices);
 
         time.sleep(0.1)
 
@@ -435,13 +437,13 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 2
-    jitter_amount = 0.0005
+    bounces = 10
+    jitter_amount = 0.001
     lambertian = True
     skyBrightness = 1
     window_size = np.array([1000, 700])
-    tileSize = 1
-    boundingBoxSlices = 5
+    tileSize = 2
+    boundingBoxSlices = 8
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()
