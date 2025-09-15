@@ -16,10 +16,10 @@ class App:
         self.knight = Mesh(
             [-5, -7.5, 0],
             [270, 0, 90],
-            "airplane_2",
+            "Stanford_dragon",
             [1, 1, 1],
             roughness=1,
-            scale=0.03
+            scale=0.8
         )
 
         self.redWall = Rect(

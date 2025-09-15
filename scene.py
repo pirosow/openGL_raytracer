@@ -2,6 +2,7 @@ import numpy as np
 from OpenGL.GL import *
 import time
 import math
+from numba import njit
 
 class Scene:
     def __init__(self, objects: list):
@@ -152,7 +153,7 @@ class Scene:
         self.childA = []
         self.childB = []
 
-        step = max(len(self.totalBoxes) // 50, 1)
+        step = max(len(self.totalBoxes) // 1000, 10)
 
         for i, box in enumerate(self.totalBoxes):
             if i % step == 0:
@@ -234,10 +235,10 @@ class Scene:
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, self.indicesObject)
 
         print("\n\n---Scene---")
-        print(f"Number of triangles: {len(self.tris)}")
-        print(f"Number of vertices: {len(self.tris) * 3}")
+        print(f"Number of triangles: {len(self.tris):,}")
+        print(f"Number of vertices: {(len(self.tris) * 3):,}")
         print(f"Number of objects: {len(self.objects)}")
-        print(f"\nNumber of bounding boxes: {len(self.totalBoxes)}")
+        print(f"\nNumber of bounding boxes: {len(self.totalBoxes):,}")
         print(f"Avg number of triangles per bounding box: {np.round(avgTris, 1)}")
         print(f"Min number of triangles per bounding box: {minTris}")
         print(f"Max number of triangles per bounding box: {maxTris}")
@@ -269,13 +270,17 @@ class Scene:
 
             print("")
 
-            step = max(length // 50, 1)
+            step = max(length // 1000, 10)
 
-            for i, fullBoundingBox in enumerate(lastBoundingBoxes):
+            iter = 0
+
+            for fullBoundingBox in lastBoundingBoxes:
+                iter += 1
+
                 boundingBox = fullBoundingBox[0]
 
-                if i % step == 0:
-                    print(f"\r{round(i / length * 100, 2)}%...", end="")
+                if iter % step == 0:
+                    print(f"\r{round(iter / length * 100, 2)}%...", end="")
 
                 idx += 1
 
@@ -312,14 +317,14 @@ class Scene:
 
         print("\rAdding data to boxes...")
 
-        step = max(len(totalBoundingBoxes) // 50, 1)
+        step = max(len(totalBoundingBoxes) // 1000, 10)
 
         for i, box in enumerate(totalBoundingBoxes):
-            ind = box["box"]
-            length = len(ind)
-
             if i % step == 0:
                 print(f"\rBox {i + 1}/{len(totalBoundingBoxes)}...", end="")
+
+            ind = box["box"]
+            length = len(ind)
 
             box["numTriangles"] = np.uint32(length)
             box["triangleOffset"] = np.uint32(offset)
