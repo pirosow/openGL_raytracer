@@ -2,7 +2,6 @@ import numpy as np
 from OpenGL.GL import *
 import time
 import math
-from numba import njit
 
 class Scene:
     def __init__(self, objects: list):
