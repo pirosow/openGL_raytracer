@@ -14,12 +14,12 @@ def read_shader(path):
 class App:
     def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination, tileSize):
         self.knight = Mesh(
-            [-5, 0, 0],
+            [-5, -7.5, 0],
             [270, 0, 90],
             "airplane_2",
             [1, 1, 1],
             roughness=1,
-            scale=0.017
+            scale=0.03
         )
 
         self.redWall = Rect(
@@ -54,7 +54,7 @@ class App:
             [-35, 0, 0],
             [0, 90, 0],
             [0.8, 0.8, 0.8],
-            roughness=0,
+            roughness=1,
             scale=10
         )
 
@@ -63,7 +63,7 @@ class App:
             [25, 0, 0],
             [0, 90, 0],
             [0.8, 0.8, 0.8],
-            roughness=0,
+            roughness=1,
             scale=10
         )
 
@@ -434,12 +434,12 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 7
+    bounces = 4
     jitter_amount = 0.001
     lambertian = True
     skyBrightness = 1
     window_size = np.array([1000, 700])
-    tileSize = 9
+    tileSize = 2
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()

@@ -152,7 +152,7 @@ class Scene:
         self.childA = []
         self.childB = []
 
-        step = max(len(self.totalBoxes) // 100, 1)
+        step = max(len(self.totalBoxes) // 50, 1)
 
         for i, box in enumerate(self.totalBoxes):
             if i % step == 0:
@@ -188,7 +188,7 @@ class Scene:
             self.childB.append(childB)
 
         for box in self.leaves:
-            length = len(box)
+            length = len(box[0])
 
             if length > maxTris:
                 maxTris = length
@@ -237,7 +237,7 @@ class Scene:
         print(f"Number of triangles: {len(self.tris)}")
         print(f"Number of vertices: {len(self.tris) * 3}")
         print(f"Number of objects: {len(self.objects)}")
-        print(f"Number of bounding boxes: {len(self.totalBoxes)}")
+        print(f"\nNumber of bounding boxes: {len(self.totalBoxes)}")
         print(f"Avg number of triangles per bounding box: {np.round(avgTris, 1)}")
         print(f"Min number of triangles per bounding box: {minTris}")
         print(f"Max number of triangles per bounding box: {maxTris}")
@@ -257,7 +257,7 @@ class Scene:
 
         minus = 0
 
-        slices = math.ceil(math.log(self.total_triangles, 2)) - 1
+        slices = math.ceil(math.log(self.total_triangles, 2))
 
         for slice in range(slices):
             print(f"\rSlicing {slice + 1}/{slices}... Total number of boxes: {len(totalBoundingBoxes)}", end="")

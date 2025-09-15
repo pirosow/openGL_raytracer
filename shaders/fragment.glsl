@@ -218,60 +218,37 @@ Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
     hit.emission = triangle.surface.x;
     hit.emission_color = triangle.emission_color;
     hit.roughness = triangle.surface.y;
+    hit.t = t;
 
     return hit;
 }
 
-bool rayBoundingBoxIntersects(Ray ray, BoundingBox box) {
-    float tmin = -1e30;
-    float tmax =  1e30;
-    const float EPS = 1e-8;
+// returns >=0 : distance to box (clamped to 0 if origin is inside the box)
+// returns -1 : no intersection in front of the ray
+float rayBoundingBoxIntersects(Ray ray, BoundingBox box) {
+    // vectorized slab test (assumes IEEE inf for 1/0)
+    vec3 invDir = 1.0f / ray.dir;
+    vec3 tMin = (box.posMin - ray.origin) * invDir;
+    vec3 tMax = (box.posMax - ray.origin) * invDir;
 
-    // X axis
-    float d = ray.dir.x;
-    if (abs(d) < EPS) {
-        if (ray.origin.x < box.posMin.x || ray.origin.x > box.posMax.x) return false;
-    } else {
-        float invD = 1.0 / d;
-        float t0 = (box.posMin.x - ray.origin.x) * invD;
-        float t1 = (box.posMax.x - ray.origin.x) * invD;
-        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
-        tmin = max(tmin, t0);
-        tmax = min(tmax, t1);
-        if (tmax < tmin) return false;
+    vec3 t1 = min(tMin, tMax);
+    vec3 t2 = max(tMin, tMax);
+
+    float dstNear = max(max(t1.x, t1.y), t1.z);
+    float dstFar  = min(min(t2.x, t2.y), t2.z);
+
+    // intersection exists if dstFar >= dstNear
+    if (dstFar >= dstNear) {
+        // box intersects the ray line. We want hits in front of the origin:
+        if (dstFar < 0.0f) {
+            // whole interval is behind the ray origin -> no hit
+            return -1.0f;
+        }
+        // if origin is inside box, dstNear < 0, but we still want to visit it -> clamp to 0
+        return (dstNear < 0.0f) ? 0.0f : dstNear;
     }
-
-    // Y axis
-    d = ray.dir.y;
-    if (abs(d) < EPS) {
-        if (ray.origin.y < box.posMin.y || ray.origin.y > box.posMax.y) return false;
-    } else {
-        float invD = 1.0 / d;
-        float t0 = (box.posMin.y - ray.origin.y) * invD;
-        float t1 = (box.posMax.y - ray.origin.y) * invD;
-        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
-        tmin = max(tmin, t0);
-        tmax = min(tmax, t1);
-        if (tmax < tmin) return false;
-    }
-
-    // Z axis
-    d = ray.dir.z;
-    if (abs(d) < EPS) {
-        if (ray.origin.z < box.posMin.z || ray.origin.z > box.posMax.z) return false;
-    } else {
-        float invD = 1.0 / d;
-        float t0 = (box.posMin.z - ray.origin.z) * invD;
-        float t1 = (box.posMax.z - ray.origin.z) * invD;
-        if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
-        tmin = max(tmin, t0);
-        tmax = min(tmax, t1);
-        if (tmax < tmin) return false;
-    }
-
-    return true;
+    return -1.0f;
 }
-
 
 float getDist(vec3 a, vec3 b) { return distance(a, b); }
 
@@ -315,100 +292,66 @@ vec3 getEnvironmentLight(Ray ray) {
     return skyColor * skyBrightness;
 }
 
-BoundingBox getLeafBoundingBox(Ray ray, BoundingBox box) {
-    BoundingBox testBox = box;
-
-    while (true) {
-        if (testBox.childA == -1) {
-            break;
-        }
-
-        if (rayBoundingBoxIntersects(ray, boundingBoxes[testBox.childA])) {
-            testBox = boundingBoxes[testBox.childA];
-        } else {
-            testBox = boundingBoxes[testBox.childB];
-       }
-    }
-
-    return testBox;
-}
-
 Hit raycast(Ray ray) {
-    float closestDist = 1e30;
-    Hit closest;
-    closest.didHit = false;
+    float closestT = 1e30f;
+    Hit closest; closest.didHit = false;
 
-    const int MAX_STACK = 128;        // <<-- much larger than 20
-    int nodeStack[MAX_STACK];
-    int stackPtr = 0;
+    const int MAX_STACK = 128;
+    int stack[MAX_STACK];
+    int sp = 0;
+    stack[sp++] = 0; // root
 
-    // push root (index 0)
-    nodeStack[stackPtr++] = 0;
+    while (sp > 0) {
+        int idx = stack[--sp];
 
-    while (stackPtr > 0) {
-        int nodeIdx = nodeStack[--stackPtr];
+        // defensive: if you want, enable this during debug only
+        if (idx < 0 || idx >= boundingBoxCount) continue;
 
-        // defensive: ensure nodeIdx within range (optional if you trust CPU)
-        if (nodeIdx < 0 || nodeIdx >= boundingBoxCount) continue;
+        float tNear = rayBoundingBoxIntersects(ray, boundingBoxes[idx]);
+        if (tNear < 0.0f || tNear > closestT) continue;
 
-        BoundingBox box = boundingBoxes[nodeIdx];
+        BoundingBox box = boundingBoxes[idx];
 
-        // AABB test
-        if (!rayBoundingBoxIntersects(ray, box)) {
-            continue;
-        }
-
-        // canonical leaf test: use numTriangles > 0 as leaf indicator
         if (box.childA == -1) {
-            // defensive bounds check before looping
+            // leaf: iterate triangles
             uint start = box.triangleOffset;
-            uint count = box.numTriangles;
-            uint end = start + count;
-            // optional: clamp end to available indices (prevents runaway reads)
-            // if (end > trianglesIndexCount) end = trianglesIndexCount;
-
+            uint end   = start + box.numTriangles;
             for (uint ti = start; ti < end; ++ti) {
                 uint triIdx = triangleIndices[ti];
-                // defensive: ensure triIdx < trisCount (optional)
-                if (triIdx >= uint(trisCount)) continue;
+                // optional debug check: if (triIdx >= trisCount) continue;
 
                 Hit h = rayTriangleIntersects(ray, tris[triIdx]);
-                if (h.didHit) {
-                    // using distance is ok, but faster to use t if you return it from the intersector
-                    float d = getDist(ray.origin, h.hit_point);
-                    if (d < closestDist && d > 1e-6) {
-                        closestDist = d;
-                        closest = h;
-                    }
+                if (h.didHit && h.t < closestT && h.t > 1e-6f) {
+                    closestT = h.t;
+                    closest  = h;
                 }
             }
         } else {
-            // internal node: push children if valid
+            // internal node: evaluate both children once
             int a = box.childA;
             int b = box.childB;
 
-            // push children, but ensure we won't overflow the stack.
-            // Prefer pushing the one you care less about first so nearer gets popped next (if you compute t's later).
-            if (a != -1) {
-                if (stackPtr + 1 >= MAX_STACK) {
-                    // handle overflow: push one child only (prefer the one likely nearer if you can compute t)
-                    // For safety, push the one with smaller index (arbitrary fallback):
-                    if (b != -1 && (stackPtr < MAX_STACK)) nodeStack[stackPtr++] = b;
+            float tA = -1.0f, tB = -1.0f;
+            if (a != -1) tA = rayBoundingBoxIntersects(ray, boundingBoxes[a]);
+            if (b != -1) tB = rayBoundingBoxIntersects(ray, boundingBoxes[b]);
+
+            // push far then near so near is popped first (LIFO)
+            // always check sp < MAX_STACK before pushing
+            if (tA >= 0.0f && tB >= 0.0f) {
+                if (tA < tB) {
+                    if (sp + 2 <= MAX_STACK) { stack[sp++] = b; stack[sp++] = a; }
+                    else if (sp + 1 <= MAX_STACK) { stack[sp++] = a; } // fallback: push nearer
                 } else {
-                    nodeStack[stackPtr++] = a;
+                    if (sp + 2 <= MAX_STACK) { stack[sp++] = a; stack[sp++] = b; }
+                    else if (sp + 1 <= MAX_STACK) { stack[sp++] = b; }
                 }
-            }
-            if (b != -1) {
-                if (stackPtr + 1 >= MAX_STACK) {
-                    // same fallback
-                    if (a != -1 && (stackPtr < MAX_STACK)) nodeStack[stackPtr++] = a;
-                } else {
-                    nodeStack[stackPtr++] = b;
-                }
+            } else if (tA >= 0.0f) {
+                if (sp < MAX_STACK) stack[sp++] = a;
+            } else if (tB >= 0.0f) {
+                if (sp < MAX_STACK) stack[sp++] = b;
             }
         }
     }
-
     return closest;
 }
 
