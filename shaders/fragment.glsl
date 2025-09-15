@@ -329,7 +329,7 @@ Hit raycast(Ray ray) {
         } else {
             // internal node: evaluate both children once
             int a = box.childA;
-            int b = box.childB;
+            int b = a + 1;
 
             float tA = -1.0f, tB = -1.0f;
             if (a != -1) tA = rayBoundingBoxIntersects(ray, boundingBoxes[a]);
