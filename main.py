@@ -83,7 +83,7 @@ class App:
             [0, 0, 0],
             [1, 1, 1],
             1.5,
-            scale=4
+            scale=5
         )
 
         self.scene = Scene([
@@ -434,12 +434,12 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 3
+    bounces = 7
     jitter_amount = 0.001
     lambertian = True
     skyBrightness = 1
     window_size = np.array([1000, 700])
-    tileSize = 10
+    tileSize = 7
     boundingBoxSlices = 17
 
     window = tk.Tk()

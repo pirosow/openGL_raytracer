@@ -271,7 +271,7 @@ class Scene:
 
         totalBoundingBoxes = [{"box": start}]
 
-        childBoundingBoxes = [start]
+        childBoundingBoxes = [[start, 0]]
 
         idx = 0
 
@@ -291,13 +291,15 @@ class Scene:
 
             step = max(length // 100, 1)
 
-            for i, boundingBox in enumerate(lastBoundingBoxes):
+            for i, fullBoundingBox in enumerate(lastBoundingBoxes):
+                boundingBox = fullBoundingBox[0]
+
                 if i % step == 0:
                     print(f"\r{round(i / length * 100, 2)}%...", end="")
 
                 idx += 1
 
-                parentIndex = boundingBoxes.index(boundingBox)
+                parentIndex = fullBoundingBox[1]
 
                 b1Index = parentIndex + idx + minus
                 b2Index = parentIndex + idx + 1 + minus
@@ -306,14 +308,14 @@ class Scene:
 
                 if len(b1) > 0:
                     totalBoundingBoxes[parentIndex]["childA"] = b1Index
-                    childBoundingBoxes.append(b1)
+                    childBoundingBoxes.append([b1, b1Index])
 
                 else:
                     minus -= 1
 
                 if len(b2) > 0:
                     totalBoundingBoxes[parentIndex]["childB"] = b2Index
-                    childBoundingBoxes.append(b2)
+                    childBoundingBoxes.append([b2, b2Index])
 
                 else:
                     minus -= 1
@@ -321,7 +323,7 @@ class Scene:
             boundingBoxes += childBoundingBoxes.copy()
 
             for boundingBox in childBoundingBoxes:
-                totalBoundingBoxes.append({"box": boundingBox})
+                totalBoundingBoxes.append({"box": boundingBox[0]})
 
         indices = []
 
@@ -354,34 +356,30 @@ class Scene:
         return indices, totalBoundingBoxes, childBoundingBoxes
 
     def getBoundingBoxCorners(self, box):
-        box = list(box)
-
+        # box: sequence of global triangle indices (may be list or ndarray)
         if len(box) == 0:
-            return (np.zeros((3,), dtype=np.float32),
-                    np.zeros((3,), dtype=np.float32))
+            raise ValueError("box must contain at least one triangle")
 
-        # Initialize posMin/posMax using the first triangle
-        i0 = box[0]
-        p0 = np.asarray(self.tris['v0']['pos'][i0], dtype=np.float32)
-        p1 = np.asarray(self.tris['v1']['pos'][i0], dtype=np.float32)
-        p2 = np.asarray(self.tris['v2']['pos'][i0], dtype=np.float32)
+        indices = np.asarray(box, dtype=np.intp)
 
-        posMin = np.minimum(np.minimum(p0, p1), p2)
-        posMax = np.maximum(np.maximum(p0, p1), p2)
+        # Assume these are numpy arrays; avoid per-element np.asarray in loop
+        v0_all = self.tris['v0']['pos'][indices].astype(np.float32, copy=False)
+        v1_all = self.tris['v1']['pos'][indices].astype(np.float32, copy=False)
+        v2_all = self.tris['v2']['pos'][indices].astype(np.float32, copy=False)
 
-        # Expand bounds over remaining triangles
-        for idx in box[1:]:
-            pv0 = np.asarray(self.tris['v0']['pos'][idx], dtype=np.float32)
-            pv1 = np.asarray(self.tris['v1']['pos'][idx], dtype=np.float32)
-            pv2 = np.asarray(self.tris['v2']['pos'][idx], dtype=np.float32)
+        # mins for each vertex-array (shape (3,))
+        min0 = v0_all.min(axis=0)
+        min1 = v1_all.min(axis=0)
+        min2 = v2_all.min(axis=0)
 
-            posMin = np.minimum(posMin, pv0)
-            posMin = np.minimum(posMin, pv1)
-            posMin = np.minimum(posMin, pv2)
+        # maxs for each vertex-array (shape (3,))
+        max0 = v0_all.max(axis=0)
+        max1 = v1_all.max(axis=0)
+        max2 = v2_all.max(axis=0)
 
-            posMax = np.maximum(posMax, pv0)
-            posMax = np.maximum(posMax, pv1)
-            posMax = np.maximum(posMax, pv2)
+        # final min/max across all three sets
+        posMin = np.minimum(np.minimum(min0, min1), min2)
+        posMax = np.maximum(np.maximum(max0, max1), max2)
 
         return posMin, posMax
 
