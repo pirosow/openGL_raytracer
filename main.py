@@ -1,10 +1,6 @@
 import pygame as pg
-from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
-import numpy as np
-import os
 import math
-import random
 import time
 from screen import Screen
 from object import *
@@ -17,62 +13,13 @@ def read_shader(path):
 
 class App:
     def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination, tileSize, slices):
-        pg.init()
-
-        # request a 4.3 core context (SSBOs require GL 4.3+)
-        pg.display.gl_set_attribute(pg.GL_CONTEXT_MAJOR_VERSION, 4)
-        pg.display.gl_set_attribute(pg.GL_CONTEXT_MINOR_VERSION, 3)
-        pg.display.gl_set_attribute(pg.GL_CONTEXT_PROFILE_MASK, pg.GL_CONTEXT_PROFILE_CORE)
-
-        pg.display.set_mode(screen_size, pg.OPENGL | pg.DOUBLEBUF)
-        pg.display.set_caption("OpenGL raytracer")
-
-        self.tileSizeX = window_size[0] // tileSize
-        self.tileSizeY = window_size[1] // tileSize
-
-        self.speed = 1
-
-        self.sensitivity = 0.1
-
-        self.canMove = False
-
-        self.w, self.h = window_size
-        self.sw, self.sh = screen_size
-
-        self.aspect = self.sw / self.sh
-
-        glViewport(0, 0, self.w, self.h)
-        glDisable(GL_DEPTH_TEST)
-
-        vert_src = read_shader(os.path.join("shaders", "vertex.glsl"))
-        frag_src = read_shader(os.path.join("shaders", "fragment.glsl"))
-
-        glBindVertexArray(glGenVertexArrays(1))
-
-        self.shader = compileProgram(
-            compileShader(vert_src, GL_VERTEX_SHADER),
-            compileShader(frag_src, GL_FRAGMENT_SHADER)
-        )
-
-        self.camPos = np.array([-33.7, 14.8, -21.1], dtype=np.float32)
-        self.camDir = np.array([65, -25.4], dtype=np.float32)
-
-        self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
-
-        self.numTilesX = int((self.w + self.tileSizeX - 1) / self.tileSizeX)
-        self.numTilesY = int((self.h + self.tileSizeY - 1) / self.tileSizeY)
-
-        glUseProgram(self.shader)
-
-        self.screen = Screen(self.w, self.h, self.sw, self.sh)
-
         self.knight = Mesh(
             [0, -24.75, 0],
-            [270, 0, -90],
-            "knight",
+            [270, 0, 0],
+            "dragon",
             [1, 1, 1],
             roughness=1,
-            scale=7
+            scale=0.5
         )
 
         self.redWall = Rect(
@@ -107,7 +54,7 @@ class App:
             [-35, 0, 0],
             [0, 90, 0],
             [0.8, 0.8, 0.8],
-            roughness=0,
+            roughness=1,
             scale=10
         )
 
@@ -149,6 +96,56 @@ class App:
             self.light,
             self.backWall
         ], slices)
+
+        pg.init()
+
+        # request a 4.3 core context (SSBOs require GL 4.3+)
+        pg.display.gl_set_attribute(pg.GL_CONTEXT_MAJOR_VERSION, 4)
+        pg.display.gl_set_attribute(pg.GL_CONTEXT_MINOR_VERSION, 3)
+        pg.display.gl_set_attribute(pg.GL_CONTEXT_PROFILE_MASK, pg.GL_CONTEXT_PROFILE_CORE)
+
+        pg.display.set_mode(screen_size, pg.OPENGL | pg.DOUBLEBUF)
+        pg.display.set_caption("OpenGL raytracer")
+
+        self.tileSizeX = window_size[0] // tileSize
+        self.tileSizeY = window_size[1] // tileSize
+
+        self.speed = 1
+
+        self.sensitivity = 0.1
+
+        self.canMove = False
+
+        self.w, self.h = window_size
+        self.sw, self.sh = screen_size
+
+        self.aspect = self.sw / self.sh
+
+        glDisable(GL_DEPTH_TEST)
+
+        vert_src = read_shader(os.path.join("shaders", "vertex.glsl"))
+        frag_src = read_shader(os.path.join("shaders", "fragment.glsl"))
+
+        glBindVertexArray(glGenVertexArrays(1))
+
+        self.shader = compileProgram(
+            compileShader(vert_src, GL_VERTEX_SHADER),
+            compileShader(frag_src, GL_FRAGMENT_SHADER)
+        )
+
+        self.scene.send()
+
+        self.camPos = np.array([-33.7, 14.8, -21.1], dtype=np.float32)
+        self.camDir = np.array([65, -25.4], dtype=np.float32)
+
+        self.camRight, self.camForward, self.camUp = self.get_camera_basis(self.camDir)
+
+        self.numTilesX = int((self.w + self.tileSizeX - 1) / self.tileSizeX)
+        self.numTilesY = int((self.h + self.tileSizeY - 1) / self.tileSizeY)
+
+        glUseProgram(self.shader)
+
+        self.screen = Screen(self.w, self.h, self.sw, self.sh)
 
         self.clock = pg.time.Clock()
 
@@ -437,13 +434,13 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 10
+    bounces = 3
     jitter_amount = 0.001
     lambertian = True
     skyBrightness = 1
     window_size = np.array([1000, 700])
-    tileSize = 2
-    boundingBoxSlices = 8
+    tileSize = 10
+    boundingBoxSlices = 17
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()

@@ -442,7 +442,7 @@ vec3 raytrace(Ray ray, int bounces) {
             ray.bounces++;
 
         } else {
-            incomingLight += skyColor * skyBrightness; //getEnvironmentLight(ray) * rayColor;
+            incomingLight += getEnvironmentLight(ray) * rayColor;
 
             break;
         }

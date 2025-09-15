@@ -1,7 +1,6 @@
-import os
 import numpy as np
 from OpenGL.GL import *
-from object import Mesh
+import time
 
 class Scene:
     def __init__(self, objects: list, slices):
@@ -88,6 +87,12 @@ class Scene:
         v1_pos = self.pos[1::3][:n_tris]
         v2_pos = self.pos[2::3][:n_tris]
 
+        self.v0_pos_3 = v0_pos / 3
+        self.v1_pos_3 = v1_pos / 3
+        self.v2_pos_3 = v2_pos / 3
+
+        self.poses = self.v0_pos_3 + self.v1_pos_3 + self.v2_pos_3
+
         v0_norm = self.normals[0::3][:n_tris]
         v1_norm = self.normals[1::3][:n_tris]
         v2_norm = self.normals[2::3][:n_tris]
@@ -128,11 +133,16 @@ class Scene:
 
         print("\nSlicing bounding boxes...")
 
-        indices, totalBoxes, leaves = self.getBoundingBoxes(slices)
+        start = time.time()
 
+        self.indices, self.totalBoxes, self.leaves = self.getBoundingBoxes(slices)
+
+        print(time.time() - start)
+
+    def send(self):
         print("\nSending scene data to gpu...")
 
-        self.boxes = np.zeros(len(totalBoxes), dtype=self.boundingBoxStruct)
+        self.boxes = np.zeros(len(self.totalBoxes), dtype=self.boundingBoxStruct)
 
         self.numTriangles = []
         self.triangleOffsets = []
@@ -141,11 +151,11 @@ class Scene:
         self.childA = []
         self.childB = []
 
-        step = len(totalBoxes) // 100
+        step = max(len(self.totalBoxes) // 100, 1)
 
-        for i, box in enumerate(totalBoxes):
+        for i, box in enumerate(self.totalBoxes):
             if i % step == 0:
-                print(f"\rBox {i + 1}/{len(totalBoxes)}...", end="")
+                print(f"\rBox {i + 1}/{len(self.totalBoxes)}...", end="")
 
             numTris = box["numTriangles"]
             offset = box["triangleOffset"]
@@ -176,7 +186,7 @@ class Scene:
             self.childA.append(childA)
             self.childB.append(childB)
 
-        for box in leaves:
+        for box in self.leaves:
             length = len(box)
             if length > maxTris:
                 maxTris = length
@@ -186,7 +196,7 @@ class Scene:
 
             avgTris += length
 
-        avgTris /= len(leaves)
+        avgTris /= len(self.leaves)
 
         self.numTriangles = np.array(self.numTriangles, dtype=np.uint32)
         self.triangleOffsets = np.array(self.triangleOffsets, dtype=np.uint32)
@@ -204,7 +214,7 @@ class Scene:
 
         self.total_boxes = len(self.boxes)
 
-        self.indices = np.array(indices, dtype=np.uint32)
+        self.indices = np.array(self.indices, dtype=np.uint32)
 
         self.tris_object = glGenBuffers(1)
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.tris_object)
@@ -224,8 +234,8 @@ class Scene:
         print("\n\n---Scene---")
         print(f"Number of triangles: {len(self.tris)}")
         print(f"Number of vertices: {len(self.tris) * 3}")
-        print(f"Number of objects: {len(objects)}")
-        print(f"Number of bounding boxes: {len(totalBoxes)}")
+        print(f"Number of objects: {len(self.objects)}")
+        print(f"Number of bounding boxes: {len(self.totalBoxes)}")
         print(f"Avg number of triangles per bounding box: {np.round(avgTris, 1)}")
         print(f"Min number of triangles per bounding box: {minTris}")
         print(f"Max number of triangles per bounding box: {maxTris}")
@@ -255,7 +265,7 @@ class Scene:
         return result
 
     def getBoundingBoxes(self, slices):
-        start = list(range(self.total_triangles))
+        start = list((range(self.total_triangles)))
 
         boundingBoxes = [start]
 
@@ -319,7 +329,7 @@ class Scene:
 
         print("\nAdding data to boxes...")
 
-        step = len(totalBoundingBoxes) // 100
+        step = max(len(totalBoundingBoxes) // 100, 1)
 
         for i, box in enumerate(totalBoundingBoxes):
             if i % step == 0:
@@ -331,8 +341,10 @@ class Scene:
                 box["posMin"], box["posMax"] = self.getBoundingBoxCorners(box["box"])
 
                 if "childA" not in list(box.keys()):
-                    box["childA"] = -1
-                    box["childB"] = -1
+                    #box["childA"] = -1
+                    #box["childB"] = -1
+
+                    pass
 
                 for index in box["box"]:
                     offset += 1
@@ -343,6 +355,7 @@ class Scene:
 
     def getBoundingBoxCorners(self, box):
         box = list(box)
+
         if len(box) == 0:
             return (np.zeros((3,), dtype=np.float32),
                     np.zeros((3,), dtype=np.float32))
@@ -375,45 +388,29 @@ class Scene:
     def sliceBoundingBox(self, box):
         posMin, posMax = self.getBoundingBoxCorners(box)
 
-        x = abs(posMin[0] - posMax[0])
-        y = abs(posMin[1] - posMax[1])
-        z = abs(posMin[2] - posMax[2])
+        delta = posMax - posMin
 
-        axis = [x, y, z].index(max(x, y, z))
+        axis = np.argmax(delta)
 
-        boundingBox1 = []
-        boundingBox2 = []
+        indices = np.array(box)
 
-        center = np.array([0, 0, 0], dtype=np.float32)
+        v0 = self.v0_pos_3[indices]
+        v1 = self.v1_pos_3[indices]
+        v2 = self.v2_pos_3[indices]
 
-        idx = 0
+        poses = self.poses[indices]
 
-        for index in box:
-            idx += 1
+        center = np.sum(v0, axis=0)
+        center += np.sum(v1, axis=0)
+        center += np.sum(v2, axis=0)
 
-            v0 = self.tris['v0']['pos'][index]
-            v1 = self.tris['v1']['pos'][index]
-            v2 = self.tris['v2']['pos'][index]
+        center /= len(box)
 
-            center += v0 / 3
-            center += v1 / 3
-            center += v2 / 3
+        childA = np.where(poses[:, axis] > center[axis])[0]
+        childB = np.where(poses[:, axis] <= center[axis])[0]
 
-        center /= idx
-
-        # calculer les bounding boxes selon l'axe
-        for i in box:
-            v0 = self.tris['v0']['pos'][i] / 3
-            v1 = self.tris['v1']['pos'][i] / 3
-            v2 = self.tris['v2']['pos'][i] / 3
-
-            pos = (v0 + v1 + v2)
-
-            if pos[axis] > center[axis]:
-                boundingBox2.append(i)
-
-            else:
-                boundingBox1.append(i)
+        boundingBox2 = indices[childA].tolist()
+        boundingBox1 = indices[childB].tolist()
 
         return boundingBox1, boundingBox2
 
