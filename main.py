@@ -12,14 +12,14 @@ def read_shader(path):
         return f.read()
 
 class App:
-    def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination, tileSize, slices):
+    def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination, tileSize):
         self.knight = Mesh(
-            [0, -24.75, 0],
-            [270, 0, 0],
-            "dragon",
+            [-5, 0, 0],
+            [270, 0, 90],
+            "airplane_2",
             [1, 1, 1],
             roughness=1,
-            scale=0.5
+            scale=0.017
         )
 
         self.redWall = Rect(
@@ -54,7 +54,7 @@ class App:
             [-35, 0, 0],
             [0, 90, 0],
             [0.8, 0.8, 0.8],
-            roughness=1,
+            roughness=0,
             scale=10
         )
 
@@ -95,7 +95,11 @@ class App:
             self.floor,
             self.light,
             self.backWall
-        ], slices)
+        ])
+
+        print("Initializing window...")
+
+        time.sleep(1)
 
         pg.init()
 
@@ -120,8 +124,6 @@ class App:
         self.sw, self.sh = screen_size
 
         self.aspect = self.sw / self.sh
-
-        glDisable(GL_DEPTH_TEST)
 
         vert_src = read_shader(os.path.join("shaders", "vertex.glsl"))
         frag_src = read_shader(os.path.join("shaders", "fragment.glsl"))
@@ -187,8 +189,6 @@ class App:
         glUniform1i(glGetUniformLocation(self.shader, "numTilesX"), self.numTilesX)
         glUniform1i(glGetUniformLocation(self.shader, "numTilesY"), self.numTilesY)
         glUniform1i(glGetUniformLocation(self.shader, "boundingBoxCount"), self.scene.total_boxes)
-
-        glUniform1i(glGetUniformLocation(self.shader, "splits"), slices);
 
         time.sleep(0.1)
 
@@ -439,8 +439,7 @@ if __name__ == "__main__":
     lambertian = True
     skyBrightness = 1
     window_size = np.array([1000, 700])
-    tileSize = 7
-    boundingBoxSlices = 17
+    tileSize = 9
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()
@@ -448,4 +447,4 @@ if __name__ == "__main__":
     screen_size = (int(screen_width // 1.15), int(screen_height // 1.15))
     window.destroy()
 
-    App(window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness, tileSize, boundingBoxSlices)
+    App(window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness, tileSize)

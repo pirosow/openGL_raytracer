@@ -1,9 +1,10 @@
 import numpy as np
 from OpenGL.GL import *
 import time
+import math
 
 class Scene:
-    def __init__(self, objects: list, slices):
+    def __init__(self, objects: list):
         print("Initalizing scene...")
 
         self.objects = objects
@@ -135,9 +136,9 @@ class Scene:
 
         start = time.time()
 
-        self.indices, self.totalBoxes, self.leaves = self.getBoundingBoxes(slices)
+        self.indices, self.totalBoxes, self.leaves = self.getBoundingBoxes()
 
-        print(time.time() - start)
+        print(f"\nTime taken: {round(time.time() - start, 2)} seconds")
 
     def send(self):
         print("\nSending scene data to gpu...")
@@ -176,7 +177,7 @@ class Scene:
                 childB = -1
 
             avgTris = 0
-            minTris = 0
+            minTris = math.inf
             maxTris = 0
 
             self.numTriangles.append(numTris)
@@ -188,6 +189,7 @@ class Scene:
 
         for box in self.leaves:
             length = len(box)
+
             if length > maxTris:
                 maxTris = length
 
@@ -240,31 +242,7 @@ class Scene:
         print(f"Min number of triangles per bounding box: {minTris}")
         print(f"Max number of triangles per bounding box: {maxTris}")
 
-    def random_color(self, seed):
-        rng = np.random.default_rng(seed)  # Seeded random generator
-        color = rng.random(3, dtype=np.float32)  # Random array of size 3 with values in [0,1]
-        return color
-
-    def read_ssbo(self, ssbo, dtype, count):
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo)
-
-        # total size in bytes
-        size = dtype.itemsize * count
-
-        # allocate raw byte buffer
-        raw = np.empty(size, dtype=np.uint8)
-
-        # copy from GPU into CPU array
-        glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, raw.nbytes, raw)
-
-        # reinterpret as structured dtype
-        result = raw.view(dtype=dtype)
-
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0)
-
-        return result
-
-    def getBoundingBoxes(self, slices):
+    def getBoundingBoxes(self):
         start = list((range(self.total_triangles)))
 
         boundingBoxes = [start]
@@ -279,6 +257,8 @@ class Scene:
 
         minus = 0
 
+        slices = math.ceil(math.log(self.total_triangles, 2)) - 1
+
         for slice in range(slices):
             print(f"\rSlicing {slice + 1}/{slices}... Total number of boxes: {len(totalBoundingBoxes)}", end="")
 
@@ -289,7 +269,7 @@ class Scene:
 
             print("")
 
-            step = max(length // 100, 1)
+            step = max(length // 50, 1)
 
             for i, fullBoundingBox in enumerate(lastBoundingBoxes):
                 boundingBox = fullBoundingBox[0]
@@ -323,35 +303,30 @@ class Scene:
             boundingBoxes += childBoundingBoxes.copy()
 
             for boundingBox in childBoundingBoxes:
-                totalBoundingBoxes.append({"box": boundingBox[0]})
+                if len(boundingBox[0]) > 0:
+                    totalBoundingBoxes.append({"box": boundingBox[0]})
 
         indices = []
 
         offset = 0
 
-        print("\nAdding data to boxes...")
+        print("\rAdding data to boxes...")
 
-        step = max(len(totalBoundingBoxes) // 100, 1)
+        step = max(len(totalBoundingBoxes) // 50, 1)
 
         for i, box in enumerate(totalBoundingBoxes):
+            ind = box["box"]
+            length = len(ind)
+
             if i % step == 0:
                 print(f"\rBox {i + 1}/{len(totalBoundingBoxes)}...", end="")
 
-            if len(box["box"]) > 0:
-                box["numTriangles"] = np.uint32(len(box["box"]))
-                box["triangleOffset"] = np.uint32(offset)
-                box["posMin"], box["posMax"] = self.getBoundingBoxCorners(box["box"])
+            box["numTriangles"] = np.uint32(length)
+            box["triangleOffset"] = np.uint32(offset)
+            box["posMin"], box["posMax"] = self.getBoundingBoxCorners(ind)
 
-                if "childA" not in list(box.keys()):
-                    #box["childA"] = -1
-                    #box["childB"] = -1
-
-                    pass
-
-                for index in box["box"]:
-                    offset += 1
-
-                    indices.append(index)
+            offset += length
+            indices += ind
 
         return indices, totalBoundingBoxes, childBoundingBoxes
 

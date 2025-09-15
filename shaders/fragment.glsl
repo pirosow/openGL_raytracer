@@ -4,8 +4,6 @@ in vec2 uv;
 
 out vec4 color;
 
-uniform int splits;
-
 uniform int tileX;
 uniform int tileY;
 uniform int tileSizeX;
