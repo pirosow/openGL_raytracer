@@ -156,7 +156,7 @@ class Scene:
 
         for i, box in enumerate(self.totalBoxes):
             if i % step == 0:
-                print(f"\rBox {i + 1}/{len(self.totalBoxes)}...", end="")
+                print(f"\rBox {(i + 1):,}/{len(self.totalBoxes):,}...", end="")
 
             numTris = box["numTriangles"]
             offset = box["triangleOffset"]
@@ -242,6 +242,18 @@ class Scene:
         print(f"Min number of triangles per bounding box: {minTris}")
         print(f"Max number of triangles per bounding box: {maxTris}")
 
+        del self.tris
+        del self.objects
+        del self.boxes
+        del self.totalBoxes
+        del self.indices
+        del self.leaves
+        del self.pos
+        del self.normals
+        del self.colors
+        del self.emissions
+        del self.emission_colors
+
     def getBoundingBoxes(self):
         start = list((range(self.total_triangles)))
 
@@ -257,10 +269,10 @@ class Scene:
 
         minus = 0
 
-        slices = math.ceil(math.log(self.total_triangles, 2))
+        slices = math.ceil(math.log(self.total_triangles, 2)) - 2
 
         for slice in range(slices):
-            print(f"\rSlicing {slice + 1}/{slices}... Total number of boxes: {len(totalBoundingBoxes)}", end="")
+            print(f"\rSlicing {slice + 1}/{slices}... Total number of boxes: {len(totalBoundingBoxes):,}", end="")
 
             lastBoundingBoxes = childBoundingBoxes.copy()
             childBoundingBoxes = []
@@ -294,6 +306,8 @@ class Scene:
                     totalBoundingBoxes[parentIndex]["childA"] = b1Index
                     childBoundingBoxes.append([b1, b1Index])
 
+                    totalBoundingBoxes.append({"box": b1})
+
                 else:
                     minus -= 1
 
@@ -301,14 +315,12 @@ class Scene:
                     totalBoundingBoxes[parentIndex]["childB"] = b2Index
                     childBoundingBoxes.append([b2, b2Index])
 
+                    totalBoundingBoxes.append({"box": b2})
+
                 else:
                     minus -= 1
 
             boundingBoxes += childBoundingBoxes.copy()
-
-            for boundingBox in childBoundingBoxes:
-                if len(boundingBox[0]) > 0:
-                    totalBoundingBoxes.append({"box": boundingBox[0]})
 
         indices = []
 
@@ -316,11 +328,11 @@ class Scene:
 
         print("\rAdding data to boxes...")
 
-        step = max(len(totalBoundingBoxes) // 1000, 10)
+        step = max(int(len(totalBoundingBoxes) / 1000), 10)
 
         for i, box in enumerate(totalBoundingBoxes):
             if i % step == 0:
-                print(f"\rBox {i + 1}/{len(totalBoundingBoxes)}...", end="")
+                print(f"\rBox {(i + 1):,}/{len(totalBoundingBoxes):,}...", end="")
 
             ind = box["box"]
             length = len(ind)
