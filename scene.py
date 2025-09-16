@@ -220,17 +220,17 @@ class Scene:
 
         self.tris_object = glGenBuffers(1)
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.tris_object)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.tris.nbytes, np.ascontiguousarray(self.tris), GL_STATIC_DRAW)
+        glBufferData(GL_SHADER_STORAGE_BUFFER, self.tris.nbytes, np.ascontiguousarray(self.tris), GL_DYNAMIC_DRAW)
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, self.tris_object)
 
         self.boundingBoxObject = glGenBuffers(1)
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.boundingBoxObject)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.boxes.nbytes, np.ascontiguousarray(self.boxes), GL_STATIC_DRAW)
+        glBufferData(GL_SHADER_STORAGE_BUFFER, self.boxes.nbytes, np.ascontiguousarray(self.boxes), GL_DYNAMIC_DRAW)
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, self.boundingBoxObject)
 
         self.indicesObject = glGenBuffers(1)
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.indicesObject)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.indices.nbytes, self.indices, GL_STATIC_DRAW)
+        glBufferData(GL_SHADER_STORAGE_BUFFER, self.indices.nbytes, self.indices, GL_DYNAMIC_DRAW)
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, self.indicesObject)
 
         print("\n\n---Scene---")
@@ -251,8 +251,18 @@ class Scene:
         del self.pos
         del self.normals
         del self.colors
+        del self.uvs
         del self.emissions
         del self.emission_colors
+        del self.surfaces
+        del self.numTriangles
+        del self.triangleOffsets
+        del self.poses
+        del self.posMin
+        del self.posMax
+        del self.v0_pos_3
+        del self.v1_pos_3
+        del self.v2_pos_3
 
     def getBoundingBoxes(self):
         start = list((range(self.total_triangles)))
@@ -302,7 +312,7 @@ class Scene:
 
                 b1, b2 = self.sliceBoundingBox(boundingBox)
 
-                if len(b1) > 0:
+                if len(b1) >= 1:
                     totalBoundingBoxes[parentIndex]["childA"] = b1Index
                     childBoundingBoxes.append([b1, b1Index])
 
@@ -311,7 +321,7 @@ class Scene:
                 else:
                     minus -= 1
 
-                if len(b2) > 0:
+                if len(b2) >= 1:
                     totalBoundingBoxes[parentIndex]["childB"] = b2Index
                     childBoundingBoxes.append([b2, b2Index])
 
@@ -337,12 +347,20 @@ class Scene:
             ind = box["box"]
             length = len(ind)
 
-            box["numTriangles"] = np.uint32(length)
-            box["triangleOffset"] = np.uint32(offset)
             box["posMin"], box["posMax"] = self.getBoundingBoxCorners(ind)
 
-            offset += length
-            indices += ind
+            keys = box.keys()
+
+            if "childA" not in keys or "childB" not in keys:
+                box["numTriangles"] = np.uint32(length)
+                box["triangleOffset"] = np.uint32(offset)
+
+                offset += length
+                indices += ind
+
+            else:
+                box["numTriangles"] = np.uint32(0)
+                box["triangleOffset"] = np.uint32(0)
 
         return indices, totalBoundingBoxes, childBoundingBoxes
 

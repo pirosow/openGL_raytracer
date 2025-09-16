@@ -202,18 +202,30 @@ Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
         return hit;
     }
 
-    // success — compute hit point & normal
+    // success — compute hit point
     vec3 hit_point = ray.origin + ray.dir * t;
-    vec3 normal = normalize(triangleFaceVector);
 
-    // make sure normal faces against the incoming ray
-    if (dot(ray.dir, normal) > 0.0f) {
-        normal = -normal;
+    // --- interpolate per-vertex normals using barycentric coords ---
+    float w = 1.0 - u - v;
+    vec3 n0 = triangle.v0.normal;
+    vec3 n1 = triangle.v1.normal;
+    vec3 n2 = triangle.v2.normal;
+
+    vec3 interpNormal = normalize(n0 * w + n1 * u + n2 * v);
+
+    // fallback to geometric normal if interpolation produced degenerate normal
+    if (length(interpNormal) < 1e-6) {
+        interpNormal = normalize(triangleFaceVector);
+    }
+
+    // make sure normal faces against the incoming ray (same as before)
+    if (dot(ray.dir, interpNormal) > 0.0f) {
+        interpNormal = -interpNormal;
     }
 
     hit.didHit = true;
     hit.hit_point = hit_point;
-    hit.normal = normal;
+    hit.normal = interpNormal;
     hit.color = triangle.color;
     hit.emission = triangle.surface.x;
     hit.emission_color = triangle.emission_color;
@@ -329,7 +341,7 @@ Hit raycast(Ray ray) {
         } else {
             // internal node: evaluate both children once
             int a = box.childA;
-            int b = a + 1;
+            int b = box.childB;
 
             float tA = -1.0f, tB = -1.0f;
             if (a != -1) tA = rayBoundingBoxIntersects(ray, boundingBoxes[a]);
@@ -449,10 +461,12 @@ void main() {
 
     vec3 currColor = trace(ray, nBounces, rays_per_pixel);
 
-    vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : texture(prevFrame, uv).rgb;
+    vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : vec3(0.0);
 
     // Progressive average
-    vec3 colorOut = (prevColor * float(frameNumber) + currColor) / float(frameNumber + 1);
+    vec3 colorOut = (frameNumber > 0)
+        ? (prevColor * float(frameNumber) + currColor) / float(frameNumber + 1)
+        : currColor;
 
     color = vec4(colorOut, 1.0);
 }

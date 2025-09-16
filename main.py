@@ -13,20 +13,29 @@ def read_shader(path):
 
 class App:
     def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination, tileSize):
-        self.knight = Mesh(
+        self.dragon = Mesh(
             [-5, -10, 0],
             [270, 0, -90],
-            "stanford_dragon",
-            [1, 1, 1],
+            "stanford_flatdragon",
+            [0.96, 0.96, 0.86],
             roughness=1,
-            scale=0.24
+            scale=0.25
+        )
+
+        self.sphere = Mesh(
+            [-25, -20, 20],
+            [0, 0, 0],
+            color=[1, 1, 1],
+            dirPath="sphere",
+            roughness=0,
+            scale=7
         )
 
         self.redWall = Rect(
             [8, 5, 0.1],
             [0, 0, 30],
             [0, 0, 0],
-            [1, 0, 0],
+            [1, 0.25, 0.3],
             roughness=1,
             scale=10
         )
@@ -35,7 +44,7 @@ class App:
             [8, 5, 0.1],
             [0, 0, -30],
             [0, 0, 0],
-            [0, 0, 1],
+            [0.3, 0.25, 1],
             roughness=1,
             scale=10
         )
@@ -44,7 +53,7 @@ class App:
             [8, 6, 0.1],
             [0, -25, 0],
             [90, 0, 0],
-            [0, 1, 0],
+            [0.25, 1, 0.3],
             roughness=1,
             scale=10
         )
@@ -53,7 +62,7 @@ class App:
             [6, 8, 0.1],
             [-35, 0, 0],
             [0, 90, 0],
-            [0.8, 0.8, 0.8],
+            [0.9, 0.9, 0.9],
             roughness=1,
             scale=10
         )
@@ -62,8 +71,8 @@ class App:
             [6, 8, 0.1],
             [25, 0, 0],
             [0, 90, 0],
-            [0.8, 0.8, 0.8],
-            roughness=1,
+            [0.9, 0.9, 0.9],
+            roughness=0,
             scale=10
         )
 
@@ -87,7 +96,8 @@ class App:
         )
 
         self.scene = Scene([
-            self.knight,
+            self.dragon,
+            self.sphere,
             self.redWall,
             self.blueWall,
             self.greenWall,
@@ -243,15 +253,17 @@ class App:
 
         glUniform3fv(glGetUniformLocation(self.shader, "camPos"), 1, self.camPos)
 
+        self.tileX = 0
+        self.tileY = 0
+
         # reset accumulation
-        self.screen.frame_count = 1
-        self.screen.accum_index = 1
+        self.screen.frame_count = 0
+        self.screen.accum_index = 0
 
         for fbo in self.screen.accum_fbo:
             glBindFramebuffer(GL_FRAMEBUFFER, fbo)
-            glViewport(0, 0, self.w, self.h)
-            glClearColor(0.0, 0.0, 0.0, 0.0)
-            glClear(GL_COLOR_BUFFER_BIT)
+
+            glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
@@ -378,8 +390,7 @@ class App:
             glViewport(0, 0, self.w, self.h)
 
             glBindVertexArray(self.screen.vao)
-            glDrawArrays(GL_TRIANGLES, 0, 3)
-            glDrawArrays(GL_TRIANGLES, 3, 3)
+            glDrawArrays(GL_TRIANGLES, 0, 6)
 
             # blit the result we just produced to the default framebuffer so the window shows it
             glBindFramebuffer(GL_READ_FRAMEBUFFER, self.screen.accum_fbo[next_idx])
@@ -396,11 +407,11 @@ class App:
 
             tileX += 1
 
-            if tileX > self.numTilesX:
+            if tileX >= self.numTilesX:
                 tileY += 1
                 tileX = 0
 
-                if tileY > self.numTilesY:
+                if tileY >= self.numTilesY:
                     tileY = 0
 
                     self.screen.frame_count += 1
@@ -423,7 +434,7 @@ class App:
         screen_surf = pg.image.fromstring(buffer, size, "RGBA")
         screen_surf = pg.transform.rotate(screen_surf, 180)
 
-        if time.time() - self.time_start > 1 * 60:
+        if time.time() - self.time_start > 10 * 60:
             pg.image.save(screen_surf, f"render_{self.get_time()}.png")
 
         # cleanup
@@ -434,10 +445,10 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 4
+    bounces = 3
     jitter_amount = 0.001
     lambertian = True
-    skyBrightness = 1
+    skyBrightness = 0
     window_size = np.array([1920, 1080])
     tileSize = 1
 
@@ -448,4 +459,4 @@ if __name__ == "__main__":
 
     window.destroy()
 
-    App(screen_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness, tileSize)
+    App(window_size, window_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness, tileSize)
