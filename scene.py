@@ -176,16 +176,16 @@ class Scene:
                 childA = -1
                 childB = -1
 
-            avgTris = 0
-            minTris = math.inf
-            maxTris = 0
-
             self.numTriangles.append(numTris)
             self.triangleOffsets.append(offset)
             self.posMin.append(posMin)
             self.posMax.append(posMax)
             self.childA.append(childA)
             self.childB.append(childB)
+
+        avgTris = 0
+        minTris = math.inf
+        maxTris = 0
 
         for box in self.leaves:
             length = len(box[0])
@@ -401,17 +401,9 @@ class Scene:
 
         indices = np.array(box)
 
-        v0 = self.v0_pos_3[indices]
-        v1 = self.v1_pos_3[indices]
-        v2 = self.v2_pos_3[indices]
-
         poses = self.poses[indices]
 
-        center = np.sum(v0, axis=0)
-        center += np.sum(v1, axis=0)
-        center += np.sum(v2, axis=0)
-
-        center /= len(box)
+        center = np.sum(self.poses[indices], axis=0) / len(box)
 
         childA = np.where(poses[:, axis] > center[axis])[0]
         childB = np.where(poses[:, axis] <= center[axis])[0]

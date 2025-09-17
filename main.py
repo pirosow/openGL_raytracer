@@ -16,7 +16,7 @@ class App:
         self.dragon = Mesh(
             [-5, -10, 0],
             [270, 0, -90],
-            "stanford_flatdragon",
+            "stanford_dragon",
             [0.96, 0.96, 0.86],
             roughness=1,
             scale=0.25
@@ -108,8 +108,6 @@ class App:
         ])
 
         print("Initializing window...")
-
-        time.sleep(1)
 
         pg.init()
 
@@ -448,15 +446,24 @@ if __name__ == "__main__":
     bounces = 3
     jitter_amount = 0.001
     lambertian = True
-    skyBrightness = 0
-    window_size = np.array([1920, 1080])
+    skyBrightness = 1
+    window_size = 1080
     tileSize = 1
 
     window = tk.Tk()
     screen_width = window.winfo_screenwidth()
     screen_height = window.winfo_screenheight()
-    screen_size = np.array((int(screen_width // 1.15), int(screen_height // 1.15)))
+
+    aspect = screen_width / screen_height
+
+    if window_size < screen_height:
+        screen_size = np.array((int(screen_width // 1.15), int(screen_height // 1.15)))
+
+    else:
+        screen_size = np.array([window_size * aspect, window_size], dtype=int)
 
     window.destroy()
 
-    App(window_size, window_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness, tileSize)
+    window_size = np.array([window_size * aspect, window_size], dtype=int)
+
+    App(window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyBrightness, tileSize)

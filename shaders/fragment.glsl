@@ -54,18 +54,6 @@ struct Vertex {
     vec3 normal;
 };
 
-struct Ball {
-    vec3 pos;
-    float radius;
-
-    vec3 color;
-
-    float emission;
-    vec3 emission_color;
-
-    float roughness;
-};
-
 struct Triangle {
     Vertex v0;
     Vertex v1;
@@ -114,53 +102,6 @@ layout (std430, binding=1) buffer boundingBoxBuffer {
 layout (std430, binding=2) buffer indicesBuffer {
     uint triangleIndices[];
 };
-
-vec3 normalizeTriangle(vec3 v0, vec3 v1, vec3 v2) {
-    return normalize(cross(v1 - v0, v2 - v0));
-}
-
-Hit raySphereIntersects(Ray ray, Ball ball) {
-    float radius = ball.radius;
-    vec3 origin = ray.origin;
-    vec3 ballPos = ball.pos;
-
-    vec3 sphere_to_ray = origin - ballPos;
-
-    float b = 2 * dot(ray.dir, sphere_to_ray);
-    float c = dot(sphere_to_ray, sphere_to_ray) - (radius * radius);
-
-    float discr = b * b - 4 * c;
-
-    if (discr < 0) {
-        return Hit(false, vec3(999, 999, 999), vec3(0, 0, 0), ball.color, ball.emission, ball.emission_color, ball.roughness, 0);
-    }
-
-    float sqrt_d = sqrt(discr);
-
-    float t0 = (-b - sqrt_d) / 2.0;
-    float t1 = (-b + sqrt_d) / 2.0;
-
-    float eps = 0.0000005 * ball.radius;
-
-    float t = 0;
-
-    if (t0 > eps) {
-        t = t0;
-    } else if (t1 > eps) {
-        t = t1;
-    } else {
-        return Hit(false, vec3(999, 999, 999), vec3(0, 0, 0), ball.color, ball.emission, ball.emission_color, ball.roughness, t);
-    }
-
-    vec3 hit_point = origin + ray.dir * t;
-    vec3 normal = (hit_point - ballPos) / radius;
-
-    if (dot(ray.dir, normal) > 0) {
-        normal = -1 * normal;
-    }
-
-    return Hit(true, hit_point, normal, ball.color, ball.emission, ball.emission_color, ball.roughness, t);
-}
 
 Hit rayTriangleIntersects(Ray ray, Triangle triangle) {
     Hit hit;
@@ -261,8 +202,6 @@ float rayBoundingBoxIntersects(Ray ray, BoundingBox box) {
     }
     return -1.0f;
 }
-
-float getDist(vec3 a, vec3 b) { return distance(a, b); }
 
 float RandomValue(inout uint state)
 {
@@ -375,6 +314,8 @@ vec3 raytrace(Ray ray, int bounces) {
         Hit hit = raycast(ray);
 
         if (hit.didHit) {
+            float emission = hit.emission;
+
             vec3 diffuseDir = diffuse(hit.normal);
             vec3 specularDir = reflect(ray.dir, hit.normal);
 
@@ -383,7 +324,7 @@ vec3 raytrace(Ray ray, int bounces) {
             ray.dir = dir;
             ray.origin = hit.hit_point + hit.normal * 1e-4;
 
-            vec3 emittedLight = hit.emission_color * hit.emission;
+            vec3 emittedLight = hit.emission_color * emission;
 
             if (lambertian) {
                 emittedLight *= 2;
@@ -394,8 +335,12 @@ vec3 raytrace(Ray ray, int bounces) {
 
             ray.bounces++;
 
+            if (emission > 0) {
+                break;
+            }
+
         } else {
-            incomingLight += getEnvironmentLight(ray) * rayColor;
+            incomingLight += getEnvironmentLight(ray);
 
             break;
         }
@@ -461,7 +406,7 @@ void main() {
 
     vec3 currColor = trace(ray, nBounces, rays_per_pixel);
 
-    vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : vec3(0.0);
+    vec3 prevColor = (frameNumber > 0) ? texture(prevFrame, uv).rgb : vec3(0);
 
     // Progressive average
     vec3 colorOut = (frameNumber > 0)
