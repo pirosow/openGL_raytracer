@@ -6,6 +6,7 @@ from screen import Screen
 from object import *
 import tkinter as tk
 from scene import Scene
+import os
 
 def read_shader(path):
     with open(path, "r") as f:
@@ -13,11 +14,13 @@ def read_shader(path):
 
 class App:
     def __init__(self, window_size, screen_size, bounces, rays_per_pixel, jitter_amount, lambertian, skyIllumination, tileSize):
+        os.system("cls")
+
         self.dragon = Mesh(
             [-5, -10, 0],
             [270, 0, -90],
-            "stanford_dragon",
-            [0.96, 0.96, 0.86],
+            "stanford_mediumdragon",
+            [1, 1, 1],
             roughness=1,
             scale=0.25
         )
@@ -443,7 +446,7 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 3
+    bounces = 15
     jitter_amount = 0.001
     lambertian = True
     skyBrightness = 1

@@ -1,6 +1,8 @@
+import pyximport; pyximport.install()
 import os
 import numpy as np
 from OpenGL.GL import *
+import loadObject
 
 class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
     def __init__(self, pos, eulers, dirPath, color=[0, 0, 0], emission_color=[0, 0, 0], emission=0, roughness=0, scale=1):
@@ -21,7 +23,7 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
                 objFilePath = os.path.join(dirPath, file)
 
         if objFilePath is not None:
-            self.total_vertices = self.loadObj(objFilePath)
+            self.total_vertices = self.loadObjCompiled(objFilePath)
 
         # after these lines (your existing code)
         self.total_vertices = self.total_vertices.reshape(-1, 8).astype(np.float32)
@@ -144,6 +146,17 @@ class Mesh: #fais que le mesh aie une position et eulers, et appelle le object
 
             vertices = np.array(vertices, dtype=np.float32)
             faces = np.array(faces, dtype=np.float32)
+
+        return vertices
+
+    def loadObjCompiled(self, filePath):
+        vertices = loadObject.loadObj(filePath)
+
+        for vertex in vertices:
+            if vertex is None:
+                print(vertex)
+
+        vertices = np.array(vertices, dtype=np.float32)
 
         return vertices
 

@@ -1,7 +1,9 @@
+import pyximport; pyximport.install()
 import numpy as np
 from OpenGL.GL import *
 import time
 import math
+import boundingBoxes
 
 class Scene:
     def __init__(self, objects: list):
@@ -136,7 +138,7 @@ class Scene:
 
         start = time.time()
 
-        self.indices, self.totalBoxes, self.leaves = self.getBoundingBoxes()
+        self.indices, self.totalBoxes, self.leaves = self.getBoundingBoxesCompiled()
 
         print(f"\nTime taken: {round(time.time() - start, 2)} seconds")
 
@@ -264,6 +266,11 @@ class Scene:
         del self.v1_pos_3
         del self.v2_pos_3
 
+    def getBoundingBoxesCompiled(self):
+        bb = boundingBoxes.BoundingBoxes()
+
+        return bb.getBoundingBoxes(self.total_triangles, self.tris, self.poses)
+
     def getBoundingBoxes(self):
         start = list((range(self.total_triangles)))
 
@@ -279,7 +286,7 @@ class Scene:
 
         minus = 0
 
-        slices = math.ceil(math.log(self.total_triangles, 2)) - 2
+        slices = math.ceil(math.log(self.total_triangles, 2)) - 1
 
         for slice in range(slices):
             print(f"\rSlicing {slice + 1}/{slices}... Total number of boxes: {len(totalBoundingBoxes):,}", end="")
@@ -291,7 +298,7 @@ class Scene:
 
             print("")
 
-            step = max(length // 1000, 10)
+            step = max(length // 100, 10)
 
             iter = 0
 
@@ -338,7 +345,7 @@ class Scene:
 
         print("\rAdding data to boxes...")
 
-        step = max(int(len(totalBoundingBoxes) / 1000), 10)
+        step = max(int(len(totalBoundingBoxes) / 100), 10)
 
         for i, box in enumerate(totalBoundingBoxes):
             if i % step == 0:
