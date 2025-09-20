@@ -166,7 +166,7 @@ class BoundingBoxes:
 
         # compute bbox corners using poses of triangle centers or vertices
         poses = self.poses[indices]                 # shape (n,3)
-        axis = np.argmax(poses.ptp(axis=0))        # ptp = max-min per axis
+        axis = np.argmax(np.ptp(poses, axis=0))        # ptp = max-min per axis
         center = poses.mean(axis=0)
 
         mask = poses[:, axis] > center[axis]

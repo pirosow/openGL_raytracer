@@ -20,7 +20,7 @@ class App:
             [-5, -10, 0],
             [270, 0, -90],
             "stanford_mediumdragon",
-            [1, 1, 1],
+            [0.92, 0.92, 0.86],
             roughness=1,
             scale=0.25
         )
@@ -446,7 +446,7 @@ class App:
 
 if __name__ == "__main__":
     rays_per_pixel = 1
-    bounces = 15
+    bounces = 7
     jitter_amount = 0.001
     lambertian = True
     skyBrightness = 1
