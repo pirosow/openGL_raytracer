@@ -20,7 +20,7 @@ class App:
             [-5, -10, 0],
             [270, 0, -90],
             "stanford_mediumdragon",
-            [0.92, 0.92, 0.86],
+            [0.96, 0.96, 0.86],
             roughness=1,
             scale=0.25
         )
